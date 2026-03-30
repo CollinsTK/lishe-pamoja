@@ -9,11 +9,11 @@ app.use(express.json());
 
 // Import the user routes 
 const userRoutes = require('./routes/userRoutes');
-
+const listingRoutes = require('./routes/listingRoutes');
 // Mount the user routes to the /api/users path
 // Now, any request to /api/users/... will be handled by userRoutes
 app.use('/api/users', userRoutes);
-
+app.use('/api/listings', listingRoutes);
 // A simple base route to verify the API is running
 app.get('/', (req, res) => {
   res.send('Welcome to the Lishe Pamoja API!');

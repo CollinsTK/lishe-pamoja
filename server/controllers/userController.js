@@ -1,44 +1,80 @@
-const User = require('../models/User'); // Importing your database blueprint
-const bcrypt = require('bcryptjs');     // Importing the security tool you just installed
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
-// The logic to register a new user
+// Helper function to generate the VIP wristband (Token)
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: '30d', 
+  });
+};
+
+// @desc    Register a new user
+// @route   POST /api/users/register
 const registerUser = async (req, res) => {
   try {
-    // 1. Catch the data coming from the frontend form
-    const { name, email, password, role, location } = req.body;
+    // 1. Grabbing all the fields including role, location, and phone
+    const { name, email, password, role, location, phone } = req.body;
 
-    // 2. Check if this email is already registered in the database
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'A user with this email already exists' });
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
     }
 
-    // 3. Scramble (hash) the password so hackers can't read it
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 4. Create the new user using the data and the scrambled password
-    const newUser = new User({
+    // 2. Saving them all to MongoDB
+    const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role,
-      location
+      role,       
+      location,   
+      phone       
     });
 
-    // 5. Save the new user to your MongoDB Atlas cloud database
-    await newUser.save();
-
-    // 6. Send a success message back to the frontend
-    res.status(201).json({ message: 'User registered successfully!' });
-
+    if (user) {
+      res.status(201).json({
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role, 
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(400).json({ message: 'Invalid user data' });
+    }
   } catch (error) {
-    console.error('Error in registerUser:', error);
-    res.status(500).json({ message: 'Server error during registration' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Export the function so the routes can use it
+// @desc    Authenticate a user (Login)
+// @route   POST /api/users/login
+const loginUser = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (user && (await bcrypt.compare(password, user.password))) {
+      res.json({
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ message: 'Invalid email or password' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 module.exports = {
-  registerUser
+  registerUser,
+  loginUser,
 };

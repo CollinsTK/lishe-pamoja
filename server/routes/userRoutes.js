@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { registerUser, loginUser } = require('../controllers/userController');
 
-// Import the brain (the controller function we just wrote)
-const { registerUser } = require('../controllers/userController');
-
-// Define the route: When a POST request hits '/register', run the controller
+// Define the routes
 router.post('/register', registerUser);
+router.post('/login', loginUser);
 
 module.exports = router;
