@@ -1,4 +1,4 @@
-# Lishe Connect Hub
+# Lishe Pamoja Hub
 
 A local platform for surplus food redistribution across recipients, vendors, and logistics partners.
 

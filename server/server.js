@@ -7,13 +7,26 @@ const app = express();
 // Middleware to parse incoming JSON data from HTTP requests
 app.use(express.json());
 
+// Simple CORS support to allow the client app to call the API during development.
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE');
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Import the user routes 
 const userRoutes = require('./routes/userRoutes');
 const listingRoutes = require('./routes/listingRoutes');
-// Mount the user routes to the /api/users path
-// Now, any request to /api/users/... will be handled by userRoutes
+const transactionRoutes = require('./routes/transactionRoutes');
+
 app.use('/api/users', userRoutes);
 app.use('/api/listings', listingRoutes);
+app.use('/api/transactions', transactionRoutes);
+
 // A simple base route to verify the API is running
 app.get('/', (req, res) => {
   res.send('Welcome to the Lishe Pamoja API!');

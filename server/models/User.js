@@ -14,8 +14,11 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
 
   // Role determining the user's access and behavior in the app.
-  // Allowed values are 'vendor' or 'recipient'.
-  role: { type: String, enum: ['vendor', 'recipient'], required: true },
+  // Allowed values include the full platform user set.
+  role: { type: String, enum: ['vendor', 'recipient', 'logistics', 'admin'], required: true },
+
+  // Phone number for contact and logistics.
+  phone: { type: String },
 
   // Optional location information for the user.
   location: { type: String },

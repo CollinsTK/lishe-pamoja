@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { sampleListings, categories } from "@/data/sampleData";
+import { categories } from "@/data/sampleData";
 import { ListingCard } from "@/components/ListingCard";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, SlidersHorizontal, MapPin } from "lucide-react";
+import { Search, MapPin } from "lucide-react";
+import { useData } from "@/contexts/DataContext";
 
 export default function RecipientHome() {
+  const { listings } = useData();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
 
-  const filtered = sampleListings.filter((l) => {
+  const filtered = listings.filter((l) => {
     if (search && !l.title.toLowerCase().includes(search.toLowerCase())) return false;
     if (selectedCategory && l.category !== selectedCategory) return false;
     if (showFreeOnly && !l.isFree) return false;
@@ -21,7 +23,6 @@ export default function RecipientHome() {
 
   return (
     <div className="space-y-4 px-4 pt-4">
-      {/* Hero greeting */}
       <div className="bg-gradient-hero rounded-2xl p-5 text-primary-foreground">
         <p className="text-sm opacity-90">Karibu 👋</p>
         <h2 className="font-heading font-bold text-xl mt-1">Find surplus food near you</h2>
@@ -30,7 +31,6 @@ export default function RecipientHome() {
         </p>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
@@ -41,7 +41,6 @@ export default function RecipientHome() {
         />
       </div>
 
-      {/* Filters */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         <Badge
           variant={showFreeOnly ? "default" : "outline"}
@@ -69,7 +68,6 @@ export default function RecipientHome() {
         ))}
       </div>
 
-      {/* Results */}
       <div>
         <p className="text-xs text-muted-foreground mb-3">{filtered.length} listings available</p>
         <div className="grid grid-cols-2 gap-3">

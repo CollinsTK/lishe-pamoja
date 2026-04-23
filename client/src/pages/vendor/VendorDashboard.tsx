@@ -1,13 +1,17 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Package, ShoppingBag, TrendingUp, Plus, AlertTriangle } from "lucide-react";
-import { sampleListings, sampleOrders } from "@/data/sampleData";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { useData } from "@/contexts/DataContext";
 
 export default function VendorDashboard() {
   const navigate = useNavigate();
-  const vendorListings = sampleListings.filter((l) => l.vendorId === "v1");
-  const vendorOrders = sampleOrders.filter((o) => o.vendorId === "v1");
+  const { user } = useAuth();
+  const { listings, orders } = useData();
+  const vendorId = user?.id ?? "";
+  const vendorListings = listings.filter((l) => l.vendorId === vendorId);
+  const vendorOrders = orders.filter((o) => o.vendorId === vendorId);
 
   const stats = [
     { label: "Active Listings", value: vendorListings.filter((l) => l.status === "Available").length, icon: Package, color: "text-primary" },
@@ -51,7 +55,7 @@ export default function VendorDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {sampleOrders.map((o) => (
+                {vendorOrders.map((o) => (
                   <tr key={o.id} className="border-t">
                     <td className="p-3 font-mono text-xs">{o.id}</td>
                     <td className="p-3">{o.listingTitle}</td>
@@ -65,6 +69,13 @@ export default function VendorDashboard() {
                     <td className="p-3 text-right font-heading font-semibold">KES {o.totalPrice}</td>
                   </tr>
                 ))}
+                {vendorOrders.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-6 text-center text-muted-foreground">
+                      No orders yet. Your current orders will appear here once a recipient makes a claim.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

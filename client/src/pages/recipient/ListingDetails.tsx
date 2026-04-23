@@ -1,16 +1,19 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { sampleListings } from "@/data/sampleData";
+import { useData } from "@/contexts/DataContext";
 import { useExpiryCountdown } from "@/hooks/useExpiryCountdown";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Clock, MapPin, Truck, Gift, ShoppingBag, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ListingDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const listing = sampleListings.find((l) => l.id === id);
+  const { listings, addOrder } = useData();
+  const { user } = useAuth();
+  const listing = listings.find((l) => l.id === id);
   const [fulfillment, setFulfillment] = useState<"Pickup" | "Delivery">("Pickup");
 
   if (!listing) {
@@ -26,15 +29,40 @@ export default function ListingDetails() {
   const logisticsFee = 150;
 
   const handleClaim = () => {
+    if (!user) {
+      toast.error("Please sign in to place an order.");
+      return;
+    }
+
+    const basePrice = listing.isFree ? 0 : listing.price;
+    const totalPrice = basePrice + (fulfillment === "Delivery" ? logisticsFee : 0);
+    const orderId = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `o_${Date.now()}`;
+
+    addOrder({
+      id: orderId,
+      listingId: listing.id,
+      listingTitle: listing.title,
+      recipientId: user.id,
+      vendorId: listing.vendorId,
+      orderType: listing.isFree ? "Claim" : "Purchase",
+      fulfillmentMode: fulfillment,
+      basePrice,
+      logisticsFee: fulfillment === "Delivery" ? logisticsFee : 0,
+      totalPrice,
+      status: "Pending",
+      createdAt: new Date().toISOString(),
+    });
+
     toast.success(listing.isFree ? "Item claimed successfully!" : "Order placed successfully!", {
-      description: `${fulfillment === "Delivery" ? "Delivery will be arranged." : "Ready for pickup."}`
+      description: `${fulfillment === "Delivery" ? "Delivery will be arranged." : "Ready for pickup."}`,
     });
     navigate("/orders");
   };
 
   return (
     <div className="pb-6">
-      {/* Image area */}
       <div className="relative h-56 bg-muted flex items-center justify-center text-6xl">
         {listing.category === "Vegetables" && "🥬"}
         {listing.category === "Bakery" && "🍞"}
@@ -43,7 +71,7 @@ export default function ListingDetails() {
         {listing.category === "Dairy" && "🥛"}
         {listing.category === "Grains" && "🌾"}
 
-        <button onClick={() => navigate(-1)} className="absolute top-4 left-4 p-2 rounded-full bg-card/80 backdrop-blur">
+        <button aria-label="Go back" onClick={() => navigate(-1)} className="absolute top-4 left-4 p-2 rounded-full bg-card/80 backdrop-blur">
           <ArrowLeft className="w-5 h-5" />
         </button>
 
@@ -56,7 +84,6 @@ export default function ListingDetails() {
       </div>
 
       <div className="px-4 space-y-4 mt-4">
-        {/* Title & Price */}
         <div className="flex items-start justify-between gap-2">
           <div>
             <h1 className="font-heading font-bold text-xl">{listing.title}</h1>
@@ -71,7 +98,6 @@ export default function ListingDetails() {
           )}
         </div>
 
-        {/* Details */}
         <div className="space-y-2 text-sm">
           <p className="text-foreground/80">{listing.description}</p>
           <div className="flex flex-wrap gap-3 text-muted-foreground">
@@ -81,11 +107,11 @@ export default function ListingDetails() {
           </div>
         </div>
 
-        {/* Fulfillment selection */}
         <div className="space-y-2">
           <p className="font-heading font-semibold text-sm">Fulfillment</p>
           <div className="grid grid-cols-2 gap-2">
             <button
+              type="button"
               onClick={() => setFulfillment("Pickup")}
               className={`p-3 rounded-xl border-2 text-center text-sm transition-all ${
                 fulfillment === "Pickup" ? "border-primary bg-primary/5" : "border-border"
@@ -96,6 +122,7 @@ export default function ListingDetails() {
               <p className="text-[10px] text-muted-foreground">Free</p>
             </button>
             <button
+              type="button"
               onClick={() => listing.deliveryAllowed && setFulfillment("Delivery")}
               disabled={!listing.deliveryAllowed}
               className={`p-3 rounded-xl border-2 text-center text-sm transition-all ${
@@ -109,7 +136,6 @@ export default function ListingDetails() {
           </div>
         </div>
 
-        {/* Price Summary */}
         <div className="bg-muted rounded-xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span>Base price</span>
