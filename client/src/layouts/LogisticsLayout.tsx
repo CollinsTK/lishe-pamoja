@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { Package, Map, CheckSquare, LogOut } from "lucide-react";
+import { Package, Map, CheckSquare, LogOut, Wallet } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -8,10 +8,18 @@ const navItems = [
   { to: "/logistics", icon: Package, label: "Dispatches" },
   { to: "/logistics/map", icon: Map, label: "Route Map" },
   { to: "/logistics/completed", icon: CheckSquare, label: "Completed" },
+  { to: "/logistics/wallet", icon: Wallet, label: "Wallet" },
 ];
 
 export function LogisticsLayout({ children }: { children: ReactNode }) {
   const { logout } = useAuth();
+
+  const handleSignOut = () => {
+    if (confirm("Are you sure you want to sign out?")) {
+      logout();
+      window.location.href = "/auth";
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -19,8 +27,13 @@ export function LogisticsLayout({ children }: { children: ReactNode }) {
         <h1 className="font-heading font-bold text-lg text-primary">🚚 Dispatch</h1>
         <div className="flex items-center gap-2">
           <NotificationBell />
-          <button onClick={logout} className="p-2 rounded-full hover:bg-muted transition-colors">
-            <LogOut className="w-4 h-4 text-muted-foreground" />
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </header>

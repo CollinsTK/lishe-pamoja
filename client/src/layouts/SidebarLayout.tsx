@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Package, Plus, ShoppingBag, BarChart3, CreditCard, Menu, X, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, Plus, ShoppingBag, BarChart3, CreditCard, Menu, X, LogOut, Wallet } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -58,8 +58,13 @@ export function SidebarLayout({ children, items, title }: SidebarLayoutProps) {
 
         <div className="p-2 border-t border-sidebar-border">
           <button
-            onClick={logout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 w-full"
+            onClick={() => {
+              if (confirm("Are you sure you want to sign out?")) {
+                logout();
+                window.location.href = "/auth";
+              }
+            }}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/20 w-full"
           >
             <LogOut className="w-5 h-5 flex-shrink-0" />
             {!collapsed && <span>Sign Out</span>}
@@ -71,7 +76,7 @@ export function SidebarLayout({ children, items, title }: SidebarLayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1">
+            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1" title="Open menu">
               <Menu className="w-5 h-5" />
             </button>
             <h2 className="font-heading font-semibold text-base">{title}</h2>
@@ -94,6 +99,7 @@ const vendorNavItems = [
   { to: "/vendor/listings", icon: Package, label: "Listings" },
   { to: "/vendor/create", icon: Plus, label: "New Listing" },
   { to: "/vendor/orders", icon: ShoppingBag, label: "Orders" },
+  { to: "/vendor/wallet", icon: Wallet, label: "Wallet" },
   { to: "/vendor/subscription", icon: CreditCard, label: "Subscription" },
   { to: "/vendor/reports", icon: BarChart3, label: "Reports" },
 ];

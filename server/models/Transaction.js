@@ -71,6 +71,65 @@ const transactionSchema = new mongoose.Schema({
       default: null,
     },
   },
+  payment: {
+    method: {
+      type: String,
+      enum: ['mpesa', 'cash', 'card', 'none'],
+      default: 'none',
+    },
+    mpesaReceiptNumber: {
+      type: String,
+      default: null,
+    },
+    checkoutRequestId: {
+      type: String,
+      default: null,
+    },
+    merchantRequestId: {
+      type: String,
+      default: null,
+    },
+    phoneNumber: {
+      type: String,
+      default: null,
+    },
+    amount: {
+      type: Number,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'completed', 'failed', 'cancelled', 'refunded'],
+      default: 'pending',
+    },
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  payout: {
+    vendorAmount: {
+      type: Number,
+      default: null,
+    },
+    logisticsAmount: {
+      type: Number,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed'],
+      default: 'pending',
+    },
+    b2cConversationId: {
+      type: String,
+      default: null,
+    },
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+  },
 }, {
   timestamps: true,
 });

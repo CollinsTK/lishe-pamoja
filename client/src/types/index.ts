@@ -9,6 +9,11 @@ export interface User {
   role: UserRole;
   phone: string;
   avatar?: string;
+  verified?: boolean;
+  status?: "Active" | "Pending" | "Suspended";
+  joined?: string;
+  subscriptionPlanId?: string;
+  walletBalance?: number;
 }
 
 export interface VendorProfile {
@@ -25,7 +30,7 @@ export interface SubscriptionPlan {
   name: string;
   price: number;
   features: string[];
-  listingsLimit: number;
+  listingsLimit: number; // -1 means unlimited
 }
 
 export interface Listing {
@@ -56,6 +61,8 @@ export interface Order {
   listingTitle: string;
   recipientId: string;
   vendorId: string;
+  orderedQuantity: number;
+  unit: string;
   orderType: "Claim" | "Purchase";
   fulfillmentMode: "Pickup" | "Delivery";
   basePrice: number;
@@ -75,6 +82,8 @@ export interface Dispatch {
   createdAt: string;
   proofPhoto?: string;
   proofSignature?: string;
+  pickupPin?: string;
+  deliveryPin?: string;
 }
 
 export interface Notification {

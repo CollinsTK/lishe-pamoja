@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Listing } from "@/types";
 
 export function useExpiryCountdown(expiryDateTime: string) {
   const [timeLeft, setTimeLeft] = useState("");
@@ -7,9 +6,23 @@ export function useExpiryCountdown(expiryDateTime: string) {
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
+    if (!expiryDateTime) {
+      setTimeLeft("No expiry");
+      setIsUrgent(false);
+      setIsExpired(false);
+      return;
+    }
+
     const update = () => {
       const now = Date.now();
       const expiry = new Date(expiryDateTime).getTime();
+      
+      if (isNaN(expiry)) {
+        setTimeLeft("Invalid");
+        setIsExpired(false);
+        return;
+      }
+
       const diff = expiry - now;
 
       if (diff <= 0) {
@@ -18,6 +31,7 @@ export function useExpiryCountdown(expiryDateTime: string) {
         return;
       }
 
+      setIsExpired(false);
       setIsUrgent(diff < 3 * 60 * 60 * 1000);
 
       const hours = Math.floor(diff / (1000 * 60 * 60));

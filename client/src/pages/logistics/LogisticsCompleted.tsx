@@ -1,13 +1,48 @@
-import { sampleDispatches } from "@/data/sampleData";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
+import { useData } from "@/contexts/DataContext";
+import Papa from "papaparse";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 export default function LogisticsCompleted() {
-  const completed = sampleDispatches.filter((d) => ["Delivered", "Failed"].includes(d.status));
+  const { dispatches } = useData();
+  const completed = dispatches.filter((d) => ["Delivered", "Failed"].includes(d.status));
+
+  const downloadReport = () => {
+    const reportData = completed.map(d => ({
+      DispatchID: d.id,
+      Date: new Date(d.createdAt).toLocaleDateString("en-KE"),
+      Pickup: d.pickupAddress,
+      Dropoff: d.dropoffAddress,
+      Status: d.status,
+      Distance: "Estimated from map",
+      Earnings: "KES 150", // Simulated static earnings for mock data
+    }));
+    
+    const csv = Papa.unparse(reportData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `dispatch_history_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="px-4 pt-4 space-y-4">
-      <h2 className="font-heading font-bold text-xl">Completed Dispatches</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="font-heading font-bold text-xl">Completed Dispatches</h2>
+        {completed.length > 0 && (
+          <Button onClick={downloadReport} size="sm" variant="outline" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Export
+          </Button>
+        )}
+      </div>
+
       {completed.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-4xl mb-2">✅</p>

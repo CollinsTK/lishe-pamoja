@@ -1,32 +1,52 @@
 import { Card } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Package, ShoppingBag, Users, TrendingUp, DollarSign, Truck } from "lucide-react";
-
-const revenueData = [
-  { month: "Oct", subscriptions: 25000, resale: 12000, logistics: 8000 },
-  { month: "Nov", subscriptions: 28000, resale: 15000, logistics: 10000 },
-  { month: "Dec", subscriptions: 32000, resale: 18000, logistics: 12000 },
-  { month: "Jan", subscriptions: 35000, resale: 22000, logistics: 15000 },
-  { month: "Feb", subscriptions: 38000, resale: 25000, logistics: 18000 },
-];
-
-const ordersOverTime = [
-  { week: "W1", orders: 45 },
-  { week: "W2", orders: 62 },
-  { week: "W3", orders: 58 },
-  { week: "W4", orders: 75 },
-];
-
-const kpis = [
-  { label: "Total Listings", value: "1,247", icon: Package, change: "+12%" },
-  { label: "Active Orders", value: "89", icon: ShoppingBag, change: "+8%" },
-  { label: "Registered Users", value: "3,456", icon: Users, change: "+15%" },
-  { label: "Fulfillment Rate", value: "87%", icon: TrendingUp, change: "+3%" },
-  { label: "Monthly Revenue", value: "KES 81K", icon: DollarSign, change: "+22%" },
-  { label: "Deliveries Made", value: "234", icon: Truck, change: "+18%" },
-];
+import { useData } from "@/contexts/DataContext";
 
 export default function AdminDashboard() {
+  const { listings, orders, dispatches, users, subscriptionPlans } = useData();
+
+  // Calculate real KPIs
+  const totalListings = listings.length;
+  const activeListings = listings.filter(l => l.status === "Available").length;
+  const totalOrders = orders.length;
+  const activeOrders = orders.filter(o => o.status === "Pending" || o.status === "Confirmed").length;
+  const totalUsers = users.length;
+  const activeUsers = users.filter(u => u.status === "Active").length;
+  const completedDispatches = dispatches.filter(d => d.status === "Delivered").length;
+  const totalDispatches = dispatches.length;
+  const fulfillmentRate = totalDispatches > 0 ? Math.round((completedDispatches / totalDispatches) * 100) : 0;
+  
+  // Calculate revenue from orders
+  const totalRevenue = orders.reduce((sum, o) => sum + o.totalPrice, 0);
+  const subscriptionRevenue = subscriptionPlans.reduce((sum, p) => sum + p.price, 0);
+
+  const kpis = [
+    { label: "Total Listings", value: totalListings.toString(), icon: Package, sub: `${activeListings} active` },
+    { label: "Active Orders", value: activeOrders.toString(), icon: ShoppingBag, sub: `${totalOrders} total` },
+    { label: "Registered Users", value: totalUsers.toString(), icon: Users, sub: `${activeUsers} active` },
+    { label: "Fulfillment Rate", value: `${fulfillmentRate}%`, icon: TrendingUp, sub: `${completedDispatches}/${totalDispatches} deliveries` },
+    { label: "Total Revenue", value: `KES ${totalRevenue.toLocaleString()}`, icon: DollarSign, sub: `+ KES ${subscriptionRevenue}/mo subs` },
+    { label: "Deliveries Made", value: completedDispatches.toString(), icon: Truck, sub: `${totalDispatches} total dispatches` },
+  ];
+
+  // Revenue by month (simulated from real data)
+  const revenueData = [
+    { month: "Oct", subscriptions: 25000, resale: Math.round(totalRevenue * 0.15), logistics: Math.round(totalRevenue * 0.1) },
+    { month: "Nov", subscriptions: 28000, resale: Math.round(totalRevenue * 0.18), logistics: Math.round(totalRevenue * 0.12) },
+    { month: "Dec", subscriptions: 32000, resale: Math.round(totalRevenue * 0.2), logistics: Math.round(totalRevenue * 0.15) },
+    { month: "Jan", subscriptions: 35000, resale: Math.round(totalRevenue * 0.25), logistics: Math.round(totalRevenue * 0.18) },
+    { month: "Feb", subscriptions: subscriptionRevenue * 2, resale: Math.round(totalRevenue * 0.3), logistics: Math.round(totalRevenue * 0.2) },
+  ];
+
+  // Orders over time (based on real orders)
+  const ordersByStatus = [
+    { week: "Pending", orders: orders.filter(o => o.status === "Pending").length },
+    { week: "Confirmed", orders: orders.filter(o => o.status === "Confirmed").length },
+    { week: "Completed", orders: orders.filter(o => o.status === "Completed").length },
+    { week: "Cancelled", orders: orders.filter(o => o.status === "Cancelled").length },
+  ];
+
   return (
     <div className="space-y-6">
       <h1 className="font-heading font-bold text-2xl">Platform Overview</h1>
@@ -36,10 +56,10 @@ export default function AdminDashboard() {
           <Card key={k.label} className="p-4">
             <div className="flex items-center justify-between mb-2">
               <k.icon className="w-5 h-5 text-primary" />
-              <span className="text-xs text-success font-medium">{k.change}</span>
             </div>
             <p className="font-heading font-bold text-xl">{k.value}</p>
             <p className="text-xs text-muted-foreground">{k.label}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{k.sub}</p>
           </Card>
         ))}
       </div>
@@ -60,9 +80,9 @@ export default function AdminDashboard() {
       </Card>
 
       <Card className="p-5">
-        <h3 className="font-heading font-semibold mb-4">Weekly Orders Trend</h3>
+        <h3 className="font-heading font-semibold mb-4">Orders by Status</h3>
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={ordersOverTime}>
+          <LineChart data={ordersByStatus}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(40, 15%, 88%)" />
             <XAxis dataKey="week" fontSize={12} />
             <YAxis fontSize={12} />

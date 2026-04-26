@@ -23,6 +23,45 @@ const userSchema = new mongoose.Schema({
   // Optional location information for the user.
   location: { type: String },
 
+  // Subscription fields
+  subscription: {
+    plan: {
+      type: String,
+      enum: ['free', 'basic', 'premium', 'enterprise'],
+      default: 'free',
+    },
+    status: {
+      type: String,
+      enum: ['active', 'pending', 'expired', 'cancelled', 'suspended'],
+      default: 'active',
+    },
+    startDate: { type: Date, default: null },
+    endDate: { type: Date, default: null },
+    autoRenew: { type: Boolean, default: false },
+    mpesaCheckoutRequestId: { type: String, default: null },
+    mpesaReceiptNumber: { type: String, default: null },
+  },
+
+  // Payment history for subscriptions
+  paymentHistory: [{
+    transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' },
+    amount: { type: Number },
+    plan: { type: String },
+    mpesaReceiptNumber: { type: String },
+    paidAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ['completed', 'failed', 'refunded'] },
+  }],
+
+  // Payout settings (for vendors/logistics to receive payments)
+  payoutSettings: {
+    mpesaPhone: { type: String, default: null },
+    isVerified: { type: Boolean, default: false },
+    verifiedAt: { type: Date, default: null },
+  },
+
+  // User wallet balance for purchasing/receiving funds
+  walletBalance: { type: Number, default: 0 },
+
   // Timestamp when the user was created.
   createdAt: { type: Date, default: Date.now }
 });

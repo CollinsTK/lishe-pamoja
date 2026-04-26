@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
-import { Home, Map, ShoppingBag, User } from "lucide-react";
+import { NavLink, Link } from "react-router-dom";
+import { Home, Map, ShoppingBag, User, LogOut, Wallet } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useAuth } from "@/contexts/AuthContext";
 
 const bottomNavItems = [
   { to: "/", icon: Home, label: "Home" },
@@ -11,6 +12,15 @@ const bottomNavItems = [
 ];
 
 export function RecipientLayout({ children }: { children: ReactNode }) {
+  const { logout } = useAuth();
+
+  const handleSignOut = () => {
+    if (confirm("Are you sure you want to sign out?")) {
+      logout();
+      window.location.href = "/auth";
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -18,7 +28,20 @@ export function RecipientLayout({ children }: { children: ReactNode }) {
         <h1 className="font-heading font-bold text-lg text-primary">
           🌿 Lishe Pamoja
         </h1>
-        <NotificationBell />
+        <div className="flex items-center gap-2">
+          <Link to="/wallet" className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="My Wallet">
+            <Wallet className="w-5 h-5" />
+          </Link>
+          <NotificationBell />
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
+        </div>
       </header>
 
       {/* Content */}

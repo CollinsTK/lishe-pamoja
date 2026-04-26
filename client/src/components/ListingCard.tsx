@@ -69,7 +69,7 @@ export function ListingCard({ listing, basePath = "/listing" }: ListingCardProps
           </span>
           {!listing.isFree && (
             <span className="font-heading font-bold text-sm text-primary">
-              KES {listing.price}
+              KES {listing.price} <span className="text-[10px] font-normal text-muted-foreground">/ {listing.unit}</span>
             </span>
           )}
         </div>

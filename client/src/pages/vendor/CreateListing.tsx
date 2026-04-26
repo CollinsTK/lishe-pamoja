@@ -134,7 +134,7 @@ export default function CreateListing() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Price (KES)</Label>
+              <Label>Price per unit (KES)</Label>
               <Input
                 type="number"
                 value={price}

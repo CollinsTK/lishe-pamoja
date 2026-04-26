@@ -1,23 +1,43 @@
-import { sampleDispatches } from "@/data/sampleData";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MapPin, ArrowRight, Camera } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
+import { useData } from "@/contexts/DataContext";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
 
 export default function LogisticsDispatches() {
-  const [dispatches, setDispatches] = useState(sampleDispatches);
-
-  const updateStatus = (id: string, newStatus: string) => {
-    setDispatches((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, status: newStatus as any } : d))
-    );
-    toast.success(`Dispatch ${id} updated to ${newStatus}`);
-  };
+  const { dispatches, updateDispatch } = useData();
+  const [pinMode, setPinMode] = useState<{ id: string; type: "pickup" | "delivery" } | null>(null);
+  const [pinInput, setPinInput] = useState("");
 
   const activeDispatches = dispatches.filter((d) => !["Delivered", "Failed"].includes(d.status));
   const completedDispatches = dispatches.filter((d) => ["Delivered", "Failed"].includes(d.status));
+
+  const handleVerifyPin = (d: any) => {
+    if (!pinMode) return;
+    
+    if (pinMode.type === "pickup") {
+      if (pinInput === d.pickupPin) {
+        updateDispatch(d.id, { status: "PickedUp" });
+        toast.success("Pickup verified successfully!");
+        setPinMode(null);
+        setPinInput("");
+      } else {
+        toast.error("Invalid Pickup PIN");
+      }
+    } else {
+      if (pinInput === d.deliveryPin) {
+        updateDispatch(d.id, { status: "Delivered" });
+        toast.success("Delivery verified successfully!");
+        setPinMode(null);
+        setPinInput("");
+      } else {
+        toast.error("Invalid Delivery PIN");
+      }
+    }
+  };
 
   return (
     <div className="px-4 pt-4 space-y-4">
@@ -46,21 +66,40 @@ export default function LogisticsDispatches() {
             <span className="truncate">{d.dropoffAddress}</span>
           </div>
 
-          <div className="flex gap-2">
-            {d.status === "Assigned" && (
-              <Button size="sm" onClick={() => updateStatus(d.id, "PickedUp")} className="bg-gradient-hero text-primary-foreground flex-1">
-                Confirm Pickup
+          <div className="flex flex-col gap-2">
+            {d.status === "Assigned" && pinMode?.id !== d.id && (
+              <Button size="sm" onClick={() => setPinMode({ id: d.id, type: "pickup" })} className="bg-gradient-hero text-primary-foreground">
+                Enter Vendor PIN to Confirm Pickup
               </Button>
             )}
             {d.status === "PickedUp" && (
-              <Button size="sm" onClick={() => updateStatus(d.id, "InTransit")} className="bg-gradient-accent text-accent-foreground flex-1">
+              <Button size="sm" onClick={() => updateDispatch(d.id, { status: "InTransit" })} className="bg-gradient-accent text-accent-foreground">
                 Start Transit
               </Button>
             )}
-            {d.status === "InTransit" && (
-              <Button size="sm" onClick={() => updateStatus(d.id, "Delivered")} className="bg-gradient-hero text-primary-foreground flex-1">
-                <Camera className="w-4 h-4 mr-1" /> Complete Delivery
+            {d.status === "InTransit" && pinMode?.id !== d.id && (
+              <Button size="sm" onClick={() => setPinMode({ id: d.id, type: "delivery" })} className="bg-gradient-hero text-primary-foreground">
+                <Camera className="w-4 h-4 mr-1" /> Enter Recipient PIN to Deliver
               </Button>
+            )}
+
+            {pinMode?.id === d.id && (
+              <div className="flex gap-2 items-center bg-muted p-2 rounded-lg mt-2">
+                <Input
+                  type="text"
+                  placeholder={pinMode.type === "pickup" ? "Vendor 4-digit PIN" : "Recipient 4-digit PIN"}
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  maxLength={4}
+                  className="bg-background"
+                />
+                <Button size="sm" onClick={() => handleVerifyPin(d)} className="bg-primary text-primary-foreground">
+                  Verify
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setPinMode(null); setPinInput(""); }}>
+                  Cancel
+                </Button>
+              </div>
             )}
           </div>
         </Card>
