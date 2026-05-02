@@ -11,7 +11,7 @@ const COLORS = ["hsl(145, 55%, 32%)", "hsl(32, 90%, 55%)", "hsl(38, 92%, 50%)", 
 
 export default function VendorReports() {
   const { user } = useAuth();
-  const { listings, orders } = useData();
+  const { listings, orders, users, dispatches } = useData();
   const vendorId = user?.id ?? "";
 
   const vendorListings = listings.filter(l => l.vendorId === vendorId);
@@ -43,15 +43,23 @@ export default function VendorReports() {
   const handleDownloadCSV = () => {
     if (vendorOrders.length === 0) return;
     
-    const csvData = vendorOrders.map(order => ({
-      "Order ID": order.id,
-      "Date": format(new Date(order.createdAt), 'yyyy-MM-dd HH:mm'),
-      "Listing Title": order.listingTitle,
-      "Quantity": `${order.orderedQuantity} ${order.unit}`,
-      "Type": order.orderType,
-      "Status": order.status,
-      "Total Price (KES)": order.totalPrice
-    }));
+    const csvData = vendorOrders.map(order => {
+      const buyerName = users.find(u => u.id === order.recipientId)?.name || "Unknown Buyer";
+      const dispatch = dispatches.find(d => d.orderId === order.id);
+      const logisticsName = dispatch?.logisticsPartnerId ? users.find(u => u.id === dispatch.logisticsPartnerId)?.name || "Unknown Logistics" : "N/A";
+
+      return {
+        "Order ID": order.id,
+        "Date": format(new Date(order.createdAt), 'yyyy-MM-dd HH:mm'),
+        "Listing Title": order.listingTitle,
+        "Quantity": `${order.orderedQuantity} ${order.unit}`,
+        "Buyer": buyerName,
+        "Logistics": logisticsName,
+        "Type": order.orderType,
+        "Status": order.status,
+        "Total Price (KES)": order.totalPrice
+      };
+    });
     
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

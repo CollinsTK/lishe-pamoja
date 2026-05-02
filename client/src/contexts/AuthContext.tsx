@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User, UserRole } from "@/types";
+import { API_BASE } from "@/lib/apiClient";
 
 interface AuthContextType {
   user: User | null;
@@ -17,8 +18,13 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const getStoredUser = (): User | null => {
   if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem("lisheUser");
-  return stored ? JSON.parse(stored) : null;
+  try {
+    const stored = localStorage.getItem("lisheUser");
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    localStorage.removeItem("lisheUser");
+    return null;
+  }
 };
 
 const getStoredToken = (): string | null => {
@@ -41,11 +47,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const response = await fetch('/api/users/me', {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(`${API_BASE}/users/me`, {
           headers: {
             'Authorization': `Bearer ${currentToken}`
-          }
+          },
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const userData = await response.json();
@@ -57,15 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           logout();
         }
       } catch (error) {
-        // Network error (server down)
-        console.error("Session verification failed:", error);
+        // Network error (server down) or timeout
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.warn("Session verification timed out");
+        } else {
+          console.error("Session verification failed:", error);
+        }
         logout();
       } finally {
         setIsInitializing(false);
       }
     };
 
-    verifySession();
+    // Ensure session verification doesn't hang forever
+    const timeout = setTimeout(() => {
+      console.warn("Session verification timed out, forcing initialization complete");
+      setIsInitializing(false);
+    }, 8000);
+
+    verifySession().finally(() => clearTimeout(timeout));
   }, []);
 
   const login = (user: User, token: string) => {

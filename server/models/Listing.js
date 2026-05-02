@@ -26,6 +26,15 @@ const listingSchema = new mongoose.Schema({
   pickupWindowStart: { type: Date, required: true },
   pickupWindowEnd: { type: Date, required: true },
   isFree: { type: Boolean, default: true },
+  price: { type: Number, default: 0 },
+  category: { type: String },
+  images: [{ type: String }],
+  deliveryAllowed: { type: Boolean, default: false },
+  location: {
+    lat: { type: Number },
+    lng: { type: Number },
+    address: { type: String }
+  },
   
   // Auto-updates based on availableQuantity
   status: { 

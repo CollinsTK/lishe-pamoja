@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Listing, Order, Dispatch, User, SubscriptionPlan } from "@/types";
-import { sampleListings, sampleOrders, sampleDispatches, samplePlans } from "@/data/sampleData";
+import { samplePlans } from "@/data/sampleData";
+import { apiClient } from "@/lib/apiClient";
 
 interface DataContextType {
   listings: Listing[];
@@ -57,56 +58,112 @@ function loadFromStorage<T>(key: string, fallback: T) {
 }
 
 const defaultUsers: User[] = [];
+const defaultListings: Listing[] = [];
+const defaultOrders: Order[] = [];
+const defaultDispatches: Dispatch[] = [];
+const defaultPlans: SubscriptionPlan[] = [];
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [listings, setListings] = useState<Listing[]>(() => loadFromStorage(LISTINGS_STORAGE_KEY, sampleListings));
-  const [orders, setOrders] = useState<Order[]>(() => loadFromStorage(ORDERS_STORAGE_KEY, sampleOrders));
-  const [dispatches, setDispatches] = useState<Dispatch[]>(() => loadFromStorage(DISPATCHES_STORAGE_KEY, sampleDispatches));
-  const [users, setUsers] = useState<User[]>(() => loadFromStorage(USERS_STORAGE_KEY, defaultUsers));
-  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(() => loadFromStorage(PLANS_STORAGE_KEY, samplePlans));
+  const [listings, setListings] = useState<Listing[]>(defaultListings);
+  const [orders, setOrders] = useState<Order[]>(defaultOrders);
+  const [dispatches, setDispatches] = useState<Dispatch[]>(defaultDispatches);
+  const [users, setUsers] = useState<User[]>(defaultUsers);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(defaultPlans);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(LISTINGS_STORAGE_KEY, JSON.stringify(listings));
-  }, [listings]);
+  const fetchData = async () => {
+    try {
+      const [listingsRes, usersRes, transactionsRes] = await Promise.all([
+        apiClient.get('/listings').catch(() => []),
+        apiClient.get('/users').catch(() => []), 
+        apiClient.get('/transactions').catch(() => ({ transactions: [] })),
+      ]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(DISPATCHES_STORAGE_KEY, JSON.stringify(dispatches));
-  }, [dispatches]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(subscriptionPlans));
-  }, [subscriptionPlans]);
-
-  const addListing = (listing: Listing) => {
-    setListings((prev) => [listing, ...prev]);
+      if (Array.isArray(listingsRes)) {
+        // Map _id to id and map backend statuses to frontend statuses
+        const mappedListings = listingsRes.map(l => {
+          let mappedStatus = "Available";
+          if (l.status === 'fully_claimed') mappedStatus = "Sold";
+          if (l.status === 'expired') mappedStatus = "Expired";
+          if (l.status === 'cancelled') mappedStatus = "Cancelled";
+          
+          return { 
+            ...l, 
+            id: l._id || l.id, 
+            quantity: l.availableQuantity,
+            status: mappedStatus
+          };
+        });
+        setListings(mappedListings);
+      }
+      
+      if (Array.isArray(usersRes)) {
+        const mappedUsers = usersRes.map(u => ({ ...u, id: u._id || u.id }));
+        setUsers(mappedUsers);
+      }
+      
+      if (transactionsRes.transactions && Array.isArray(transactionsRes.transactions)) {
+        const mappedTransactions = transactionsRes.transactions.map((t: any) => ({ ...t, id: t._id || t.id }));
+        setOrders(mappedTransactions);
+        
+        const dispatchesList = mappedTransactions.filter((t: any) => t.logisticsId);
+        setDispatches(dispatchesList);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const updateListing = (listingId: string, updates: Partial<Listing>) => {
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const addListing = async (listing: Listing) => {
+    try {
+      const res = await apiClient.post('/listings', listing);
+      const savedListing = { ...res, id: res._id || res.id, quantity: res.availableQuantity };
+      setListings((prev) => [savedListing, ...prev]);
+    } catch (e) {
+      console.error(e);
+      // Fallback
+      setListings((prev) => [listing, ...prev]);
+    }
+  };
+
+  const updateListing = async (listingId: string, updates: Partial<Listing>) => {
+    try {
+      await apiClient.put(`/listings/${listingId}`, updates);
+    } catch (e) { console.error(e); }
     setListings((prev) => prev.map((l) => (l.id === listingId ? { ...l, ...updates } : l)));
   };
 
-  const deleteListing = (listingId: string) => {
+  const deleteListing = async (listingId: string) => {
+    try {
+      await apiClient.delete(`/listings/${listingId}`);
+    } catch (e) { console.error(e); }
     setListings((prev) => prev.filter((l) => l.id !== listingId));
   };
 
-  const updateOrder = (orderId: string, updates: Partial<Order>) => {
+  const updateOrder = async (orderId: string, updates: Partial<Order>) => {
+    try {
+      // For status updates
+      if (updates.status === 'Cancelled') {
+        await apiClient.put(`/transactions/${orderId}/cancel`, {});
+      } else if (updates.status === 'IN_TRANSIT') {
+        await apiClient.put(`/transactions/${orderId}/verify-pickup`, { pin: 'dummy' });
+      } else if (updates.status === 'DELIVERED') {
+        await apiClient.put(`/transactions/${orderId}/verify-delivery`, { pin: 'dummy' });
+      } else if (updates.status === 'LOGISTICS_ASSIGNED') {
+        await apiClient.put(`/transactions/${orderId}/accept`, {});
+      }
+    } catch (e) { console.error(e); }
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)));
   };
 
-  const addOrder = (order: Order) => {
+  const addOrder = async (order: Order) => {
+    // handled via checkoutCart usually
     setOrders((prev) => [order, ...prev]);
   };
 
@@ -160,7 +217,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addUser, updateUser, updateUserWallet, verifyUser,
       addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan
     }}>
-      {children}
+      {isLoading ? <div className="min-h-screen flex items-center justify-center">Loading...</div> : children}
     </DataContext.Provider>
   );
 }

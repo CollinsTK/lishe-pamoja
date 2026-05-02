@@ -13,12 +13,14 @@ const {
   setupPayoutAccount,
   verifyPayoutAccount,
   handleSubscriptionCallback,
+  getAllUsers,
 } = require('../controllers/userController');
 
 // Auth routes
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 router.get('/me', protect, getUserProfile);
+router.get('/', protect, getAllUsers);
 
 // Subscription routes
 router.get('/subscription/plans', protect, getSubscriptionPlans);

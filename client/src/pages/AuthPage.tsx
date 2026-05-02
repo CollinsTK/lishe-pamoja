@@ -7,8 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Users, Store, Truck, Shield } from "lucide-react";
 import logoUrl from "@/assets/lishe-logo.svg";
-
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
+import { apiClient } from "@/lib/apiClient";
 
 const roles: { value: UserRole; label: string; icon: any; desc: string }[] = [
   { value: "recipient", label: "Recipient", icon: Users, desc: "Browse & claim surplus food" },
@@ -43,21 +42,12 @@ export default function AuthPage() {
     setIsLoading(true);
 
     try {
-      const endpoint = isLogin ? "/api/users/login" : "/api/users/register";
+      const endpoint = isLogin ? "/users/login" : "/users/register";
       const payload = isLogin
         ? { email, password }
         : { name, email, password, phone, role: selectedRole };
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.message || "Unable to complete authentication");
-      }
+      const data = await apiClient.post(endpoint, payload);
 
       const user: User = {
         id: data._id,

@@ -3,6 +3,7 @@ import { NavLink, Link } from "react-router-dom";
 import { Home, Map, ShoppingBag, User, LogOut, Wallet } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
+import { CartDrawer } from "@/components/CartDrawer";
 
 const bottomNavItems = [
   { to: "/", icon: Home, label: "Home" },
@@ -32,6 +33,7 @@ export function RecipientLayout({ children }: { children: ReactNode }) {
           <Link to="/wallet" className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="My Wallet">
             <Wallet className="w-5 h-5" />
           </Link>
+          <CartDrawer />
           <NotificationBell />
           <button
             onClick={handleSignOut}

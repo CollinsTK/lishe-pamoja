@@ -18,29 +18,45 @@ const getListings = async (req, res) => {
 // @access  Private (Only logged in vendors/restaurants)
 const createListing = async (req, res) => {
   try {
-    // Grab all the exact fields required by your schema
+    // Frontend sends slightly different field names than what the backend originally expected.
+    // Map them properly.
     const { 
       title, 
       description, 
-      originalQuantity, 
-      availableQuantity, 
+      quantity, 
+      originalQuantity,
+      availableQuantity,
       unit, 
       foodCondition, 
       expiryDateTime, 
-      pickupWindowStart, 
-      pickupWindowEnd 
+      pickupStart,
+      pickupWindowStart,
+      pickupEnd,
+      pickupWindowEnd,
+      price,
+      category,
+      images,
+      deliveryAllowed,
+      location,
+      isFree,
     } = req.body;
 
     const listing = await Listing.create({
       title,
       description,
-      originalQuantity,
-      availableQuantity,
+      originalQuantity: originalQuantity || quantity,
+      availableQuantity: availableQuantity || quantity,
       unit,
-      foodCondition,
+      foodCondition: foodCondition || 'Packaged',
       expiryDateTime,
-      pickupWindowStart,
-      pickupWindowEnd,
+      pickupWindowStart: pickupWindowStart || pickupStart,
+      pickupWindowEnd: pickupWindowEnd || pickupEnd,
+      price: price || 0,
+      category,
+      images: images || [],
+      deliveryAllowed: deliveryAllowed || false,
+      location,
+      isFree: isFree !== undefined ? isFree : (price === 0),
       vendor: req.user.id, // Attached from the authMiddleware
     });
 

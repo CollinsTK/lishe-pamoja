@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
+import { CartProvider } from "@/contexts/CartContext";
 import { AutoLogout } from "@/components/AutoLogout";
 import { Loader2 } from "lucide-react";
 
@@ -49,6 +50,17 @@ const queryClient = new QueryClient();
 
 function AppRoutes() {
   const { isAuthenticated, isInitializing } = useAuth();
+
+  // Show auth page immediately if not authenticated, even while initializing
+  // This prevents the stuck "Verifying session..." screen
+  if (!isAuthenticated && isInitializing) {
+    return (
+      <Routes>
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="*" element={<Navigate to="/auth" replace />} />
+      </Routes>
+    );
+  }
 
   if (isInitializing) {
     return (
@@ -116,9 +128,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <DataProvider>
-            <AppRoutes />
-          </DataProvider>
+          <CartProvider>
+            <DataProvider>
+              <AppRoutes />
+            </DataProvider>
+          </CartProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

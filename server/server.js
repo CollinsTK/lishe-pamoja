@@ -35,6 +35,16 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI; 
 
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI is not set. Create a server/.env file with your MongoDB connection string.');
+  process.exit(1);
+}
+
+if (!process.env.JWT_SECRET) {
+  console.error('❌ JWT_SECRET is not set. Create a server/.env file with a secure JWT secret.');
+  process.exit(1);
+}
+
 // Connect to MongoDB before starting the server
 mongoose.connect(MONGO_URI)
   .then(() => {

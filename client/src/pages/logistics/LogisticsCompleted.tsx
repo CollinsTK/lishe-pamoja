@@ -6,19 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
 export default function LogisticsCompleted() {
-  const { dispatches } = useData();
+  const { dispatches, orders, users } = useData();
   const completed = dispatches.filter((d) => ["Delivered", "Failed"].includes(d.status));
 
   const downloadReport = () => {
-    const reportData = completed.map(d => ({
-      DispatchID: d.id,
-      Date: new Date(d.createdAt).toLocaleDateString("en-KE"),
-      Pickup: d.pickupAddress,
-      Dropoff: d.dropoffAddress,
-      Status: d.status,
-      Distance: "Estimated from map",
-      Earnings: "KES 150", // Simulated static earnings for mock data
-    }));
+    const reportData = completed.map(d => {
+      const order = orders.find(o => o.id === d.orderId);
+      const buyerName = order?.recipientId ? users.find(u => u.id === order.recipientId)?.name || "Unknown Buyer" : "N/A";
+      const vendorName = order?.vendorId ? users.find(u => u.id === order.vendorId)?.name || "Unknown Vendor" : "N/A";
+
+      return {
+        DispatchID: d.id,
+        Date: new Date(d.createdAt).toLocaleDateString("en-KE"),
+        Pickup: d.pickupAddress,
+        Dropoff: d.dropoffAddress,
+        Vendor: vendorName,
+        Buyer: buyerName,
+        Status: d.status,
+        Distance: "Estimated from map",
+        Earnings: "KES 150", // Simulated static earnings for mock data
+      };
+    });
     
     const csv = Papa.unparse(reportData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

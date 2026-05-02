@@ -16,6 +16,11 @@ const transactionSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  orderGroupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'OrderGroup',
+    default: null,
+  },
   logisticsId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -64,6 +69,7 @@ const transactionSchema = new mongoose.Schema({
     pickedUpAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    cancelledAt: { type: Date, default: null },
   },
   documents: {
     receiptUrl: {

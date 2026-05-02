@@ -1,6 +1,7 @@
 const Transaction = require('../models/Transaction');
 const Listing = require('../models/Listing');
 const User = require('../models/User');
+const OrderGroup = require('../models/OrderGroup');
 const { generateReceiptUrl } = require('../utils/receiptGenerator');
 const MpesaService = require('../services/mpesaService');
 
@@ -71,6 +72,103 @@ const claimListing = async (req, res) => {
       success: true,
       message: 'Listing claimed successfully. Waiting for logistics.',
       transaction,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+const checkoutCart = async (req, res) => {
+  try {
+    const { items, phoneNumber } = req.body;
+    // items: [{ listingId, quantity, fulfillmentMode, deliveryFee }]
+    const recipientId = req.user?.id;
+    if (!recipientId) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!items || !items.length) return res.status(400).json({ success: false, message: 'Cart is empty' });
+
+    let totalAmount = 0;
+    const transactions = [];
+
+    // Verify and reserve all listings first
+    for (const item of items) {
+      const listing = await Listing.findOne({
+        _id: item.listingId,
+        status: { $in: ['available', 'partially_claimed'] },
+        availableQuantity: { $gte: item.quantity },
+      });
+      if (!listing) return res.status(400).json({ success: false, message: `Listing unavailable or insufficient quantity` });
+      
+      const pickupPin = generatePIN();
+      const deliveryPin = generatePIN();
+
+      const remainingQuantity = listing.availableQuantity - item.quantity;
+      listing.availableQuantity = remainingQuantity;
+      listing.status = remainingQuantity === 0 ? 'fully_claimed' : 'partially_claimed';
+      await listing.save();
+
+      const transaction = new Transaction({
+        listingId: listing._id,
+        vendorId: listing.vendor,
+        recipientId,
+        quantity: item.quantity,
+        fulfillmentMode: item.fulfillmentMode || 'Pickup',
+        deliveryFee: item.deliveryFee || 0,
+        status: 'CLAIMED',
+        securityCodes: { pickupPin, deliveryPin },
+      });
+      
+      const itemPrice = (listing.price || 0) * item.quantity + (item.deliveryFee || 0);
+      totalAmount += itemPrice;
+
+      transactions.push(transaction);
+    }
+
+    const orderGroup = new OrderGroup({
+      recipientId,
+      totalAmount,
+    });
+
+    for (const t of transactions) {
+      t.orderGroupId = orderGroup._id;
+      await t.save();
+    }
+
+    orderGroup.transactions = transactions.map(t => t._id);
+    await orderGroup.save();
+
+    if (phoneNumber && totalAmount > 0) {
+      const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
+      const callBackUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/transactions/payment/callback`;
+
+      const result = await mpesaService.initiateSTKPush({
+        phone: formattedPhone,
+        amount: totalAmount,
+        accountReference: `LP${orderGroup._id}`,
+        transactionDesc: `Lishe Pamoja - Order Group ${orderGroup._id}`,
+        callBackUrl,
+      });
+
+      orderGroup.payment = {
+        method: 'mpesa',
+        checkoutRequestId: result.checkoutRequestId,
+        merchantRequestId: result.merchantRequestId,
+        phoneNumber: formattedPhone,
+        status: 'pending',
+      };
+      await orderGroup.save();
+      
+      return res.status(201).json({
+        success: true,
+        message: 'Checkout successful. Please enter your PIN.',
+        orderGroup,
+        checkoutRequestId: result.checkoutRequestId,
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Checkout successful.',
+      orderGroup,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
@@ -168,16 +266,123 @@ const verifyDelivery = async (req, res) => {
   }
 };
 
+const cancelTransaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.id;
+
+    const transaction = await Transaction.findById(id).populate('listingId');
+    if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+    
+    // Check ownership
+    if (transaction.recipientId.toString() !== userId) {
+      return res.status(403).json({ message: 'Not authorized to cancel this transaction' });
+    }
+
+    // Check time limit (15 minutes)
+    const now = Date.now();
+    const createdAt = new Date(transaction.createdAt).getTime();
+    if (now - createdAt > 15 * 60 * 1000) {
+      return res.status(400).json({ message: 'Time limit for cancellation (15 minutes) has expired.' });
+    }
+
+    if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(transaction.status)) {
+      return res.status(400).json({ message: `Cannot cancel transaction in ${transaction.status} status` });
+    }
+
+    const listing = transaction.listingId;
+    const refundAmount = (listing.price || 0) * transaction.quantity + (transaction.deliveryFee || 0);
+
+    const user = await User.findById(userId);
+    if (refundAmount > 0 && transaction.payment.status === 'completed') {
+      user.walletBalance = (user.walletBalance || 0) + refundAmount;
+      await user.save();
+    }
+
+    listing.availableQuantity += transaction.quantity;
+    if (listing.status === 'fully_claimed') {
+      listing.status = 'partially_claimed';
+    }
+    await listing.save();
+
+    transaction.status = 'CANCELLED';
+    transaction.timeline.cancelledAt = now;
+    if (transaction.payment.status === 'completed') {
+      transaction.payment.status = 'refunded';
+    }
+    await transaction.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Transaction cancelled. ${refundAmount > 0 && transaction.payment.status === 'completed' ? `Ksh ${refundAmount} refunded to your Wallet.` : ''}`,
+      transaction,
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+const getTransactions = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const role = req.user?.role;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    let query = {};
+    if (role === 'recipient') {
+      query.recipientId = userId;
+    } else if (role === 'vendor') {
+      query.vendorId = userId;
+    } else if (role === 'logistics') {
+      query.logisticsId = userId;
+    }
+
+    const transactions = await Transaction.find(query)
+      .populate('listingId')
+      .populate('vendorId', 'name email phone')
+      .populate('recipientId', 'name email phone')
+      .populate('logisticsId', 'name email phone')
+      .sort('-createdAt');
+
+    res.status(200).json({ success: true, transactions });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+const getAllTransactions = async (req, res) => {
+  try {
+    const transactions = await Transaction.find({})
+      .populate('listingId')
+      .populate('vendorId', 'name email phone')
+      .populate('recipientId', 'name email phone')
+      .populate('logisticsId', 'name email phone')
+      .sort('-createdAt');
+
+    res.status(200).json({ success: true, transactions });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
 module.exports = {
   claimListing,
+  checkoutCart,
   acceptDispatch,
   verifyPickup,
   verifyDelivery,
+  cancelTransaction,
   initiatePayment,
   checkPaymentStatus,
   processPayout,
   handlePaymentCallback,
   handlePayoutCallback,
+  getTransactions,
+  getAllTransactions,
 };
 
 // ============== Payment Functions ==============

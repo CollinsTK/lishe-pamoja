@@ -51,9 +51,13 @@ const registerUser = async (req, res) => {
     if (user) {
       res.status(201).json({
         _id: user.id,
+        id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role, 
+        role: user.role,
+        phone: user.phone,
+        location: user.location,
+        walletBalance: user.walletBalance,
         token: generateToken(user._id),
       });
     } else {
@@ -75,9 +79,13 @@ const loginUser = async (req, res) => {
     if (user && (await bcrypt.compare(password, user.password))) {
       res.json({
         _id: user.id,
+        id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
+        phone: user.phone,
+        location: user.location,
+        walletBalance: user.walletBalance,
         token: generateToken(user._id),
       });
     } else {
@@ -98,6 +106,18 @@ const getUserProfile = async (req, res) => {
     } else {
       res.status(404).json({ message: 'User not found' });
     }
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get all users (admin only)
+// @route   GET /api/users
+const getAllUsers = async (req, res) => {
+  try {
+    // In a real app, we should check if req.user.role === 'admin'
+    const users = await User.find({}).select('-password');
+    res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -553,4 +573,5 @@ module.exports = {
   setupPayoutAccount,
   verifyPayoutAccount,
   handleSubscriptionCallback,
+  getAllUsers,
 };

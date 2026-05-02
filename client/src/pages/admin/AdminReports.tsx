@@ -83,11 +83,47 @@ export default function AdminReports() {
     document.body.removeChild(link);
   };
 
+  const downloadOrdersReport = () => {
+    const ordersData = orders.map(order => {
+      const buyerName = order.recipientId ? users.find(u => u.id === order.recipientId)?.name || "Unknown Buyer" : "N/A";
+      const vendorName = order.vendorId ? users.find(u => u.id === order.vendorId)?.name || "Unknown Vendor" : "N/A";
+      const dispatch = dispatches.find(d => d.orderId === order.id);
+      const logisticsName = dispatch?.logisticsPartnerId ? users.find(u => u.id === dispatch.logisticsPartnerId)?.name || "Unknown Logistics" : "N/A";
+
+      return {
+        "Order ID": order.id,
+        "Date": new Date(order.createdAt).toLocaleDateString('en-KE'),
+        "Listing Title": order.listingTitle,
+        "Quantity": `${order.orderedQuantity} ${order.unit}`,
+        "Vendor": vendorName,
+        "Buyer": buyerName,
+        "Logistics": logisticsName,
+        "Type": order.orderType,
+        "Status": order.status,
+        "Total Price (KES)": order.totalPrice
+      };
+    });
+
+    const csv = Papa.unparse(ordersData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `platform_orders_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="font-heading font-bold text-2xl">Impact Reports</h1>
         <div className="flex gap-2">
+          <Button onClick={downloadOrdersReport} variant="outline" className="flex items-center gap-2">
+            <Download className="w-4 h-4" />
+            Export Orders CSV
+          </Button>
           <Button onClick={downloadUsersReport} variant="outline" className="flex items-center gap-2">
             <Download className="w-4 h-4" />
             Export Users CSV
