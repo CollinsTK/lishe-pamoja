@@ -7,21 +7,23 @@ import { ArrowLeft, Clock, MapPin, Truck, Gift, ShoppingBag, User } from "lucide
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2, Smartphone, Wallet } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import LocationPicker, { LocationValue } from "@/components/LocationPicker";
 
 export default function ListingDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { listings, addOrder, addDispatch, updateListing, updateUserWallet } = useData();
+  const { listings, updateListing } = useData();
   const { user } = useAuth();
   const { addToCart } = useCart();
   const listing = listings.find((l) => l.id === id);
   const [fulfillment, setFulfillment] = useState<"Pickup" | "Delivery">("Pickup");
   const [orderedQuantity, setOrderedQuantity] = useState(1);
+  const [deliveryLocation, setDeliveryLocation] = useState<LocationValue>({
+    lat: -1.2921,
+    lng: 36.8219,
+    address: "",
+  });
 
   if (!listing) {
     return (
@@ -46,7 +48,18 @@ export default function ListingDetails() {
       return;
     }
 
-    addToCart(listing, orderedQuantity, fulfillment, fulfillment === "Delivery" ? logisticsFee : 0);
+    if (fulfillment === "Delivery" && !deliveryLocation.address.trim()) {
+      toast.error("Please pin your delivery location on the map.");
+      return;
+    }
+
+    addToCart(
+      listing,
+      orderedQuantity,
+      fulfillment,
+      fulfillment === "Delivery" ? logisticsFee : 0,
+      fulfillment === "Delivery" ? deliveryLocation : undefined,
+    );
     toast.success("Added to cart", {
       description: `${orderedQuantity} x ${listing.title} added to your cart.`
     });
@@ -128,6 +141,17 @@ export default function ListingDetails() {
               <p className="text-[10px] text-muted-foreground">KES {logisticsFee}</p>
             </button>
           </div>
+
+          {fulfillment === "Delivery" && (
+            <div className="mt-3">
+              <LocationPicker
+                label="Delivery Address"
+                value={deliveryLocation}
+                onChange={setDeliveryLocation}
+                height="220px"
+              />
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

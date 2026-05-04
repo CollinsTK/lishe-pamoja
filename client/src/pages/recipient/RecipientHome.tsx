@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search, MapPin } from "lucide-react";
 import { useData } from "@/contexts/DataContext";
+import { useListingsPolling } from '../../hooks/useListingsPolling';
 
-export default function RecipientHome() {
+export default function RecipientHome() {  useListingsPolling();
   const { listings } = useData();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export default function RecipientHome() {
     if (selectedCategory && l.category !== selectedCategory) return false;
     if (showFreeOnly && !l.isFree) return false;
     if (showDelivery && !l.deliveryAllowed) return false;
-    return l.status === "Available";
+    return l.status === "available" || l.status === "partially_claimed";
   });
 
   return (

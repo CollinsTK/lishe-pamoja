@@ -1,15 +1,24 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { User, UserRole } from "@/types";
+import { User, UserCapabilities } from "@/types";
 import { API_BASE } from "@/lib/apiClient";
+
+// Default capabilities for new users
+const defaultCapabilities: UserCapabilities = {
+  canBrowse: true,
+  canSell: false,
+  canDeliver: false,
+};
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  role: UserRole;
-  setRole: (role: UserRole) => void;
+  capabilities: UserCapabilities;
+  isAdmin: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
   updateAuthUser: (updates: Partial<User>) => void;
+  hasCapability: (capability: keyof UserCapabilities) => boolean;
+  hasAnyCapability: (...capabilities: (keyof UserCapabilities)[]) => boolean;
   isAuthenticated: boolean;
   isInitializing: boolean;
 }
@@ -32,11 +41,21 @@ const getStoredToken = (): string | null => {
   return localStorage.getItem("lisheToken");
 };
 
+const normalizeUser = (userData: any): User => ({
+  ...userData,
+  id: userData.id || userData._id,
+  capabilities: userData.capabilities || defaultCapabilities,
+  isAdmin: userData.isAdmin || false,
+});
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [token, setToken] = useState<string | null>(() => getStoredToken());
-  const [role, setRole] = useState<UserRole>(() => getStoredUser()?.role ?? "recipient");
   const [isInitializing, setIsInitializing] = useState(true);
+
+  // Get capabilities from user or use defaults
+  const capabilities = user?.capabilities || defaultCapabilities;
+  const isAdmin = user?.isAdmin || false;
 
   useEffect(() => {
     const verifySession = async () => {
@@ -61,9 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (response.ok) {
           const userData = await response.json();
-          setUser(userData);
-          setRole(userData.role);
-          localStorage.setItem("lisheUser", JSON.stringify(userData));
+          const normalizedUser = normalizeUser(userData);
+          setUser(normalizedUser);
+          localStorage.setItem("lisheUser", JSON.stringify(normalizedUser));
         } else {
           // Token is invalid or server rejected it
           logout();
@@ -91,17 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = (user: User, token: string) => {
-    setUser(user);
+    const normalizedUser = normalizeUser(user);
+    setUser(normalizedUser);
     setToken(token);
-    setRole(user.role);
-    localStorage.setItem("lisheUser", JSON.stringify(user));
+    localStorage.setItem("lisheUser", JSON.stringify(normalizedUser));
     localStorage.setItem("lisheToken", token);
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    setRole("recipient");
     localStorage.removeItem("lisheUser");
     localStorage.removeItem("lisheToken");
   };
@@ -115,8 +133,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // Helper functions to check capabilities
+  const hasCapability = (capability: keyof UserCapabilities): boolean => {
+    // Admin has all capabilities
+    if (isAdmin) return true;
+    return capabilities[capability] === true;
+  };
+
+  const hasAnyCapability = (...caps: (keyof UserCapabilities)[]): boolean => {
+    // Admin has all capabilities
+    if (isAdmin) return true;
+    return caps.some(cap => capabilities[cap] === true);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, role, setRole, login, logout, updateAuthUser, isAuthenticated: !!user, isInitializing }}>
+    <AuthContext.Provider value={{
+      user,
+      token,
+      capabilities,
+      isAdmin,
+      login,
+      logout,
+      updateAuthUser,
+      hasCapability,
+      hasAnyCapability,
+      isAuthenticated: !!user,
+      isInitializing,
+    }}>
       {children}
     </AuthContext.Provider>
   );

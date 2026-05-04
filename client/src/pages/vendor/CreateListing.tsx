@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
+import LocationPicker, { LocationValue } from "@/components/LocationPicker";
 
 export default function CreateListing() {
   const navigate = useNavigate();
@@ -27,13 +28,17 @@ export default function CreateListing() {
   const [pickupStart, setPickupStart] = useState("08:00");
   const [pickupEnd, setPickupEnd] = useState("18:00");
   const [expiryDateTime, setExpiryDateTime] = useState("");
-  const [location, setLocation] = useState("");
+  const [locationValue, setLocationValue] = useState<LocationValue>({
+    lat: -1.2921,
+    lng: 36.8219,
+    address: "",
+  });
   const [deliveryAllowed, setDeliveryAllowed] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!title.trim() || !description.trim() || !unit.trim() || !expiryDateTime || !location.trim()) {
+    if (!title.trim() || !description.trim() || !unit.trim() || !expiryDateTime || !locationValue.address.trim()) {
       toast.error("Please complete all required fields before publishing.");
       return;
     }
@@ -57,11 +62,11 @@ export default function CreateListing() {
       expiryDateTime,
       deliveryAllowed,
       location: {
-        lat: -1.2921,
-        lng: 36.8219,
-        address: location.trim(),
+        lat: locationValue.lat,
+        lng: locationValue.lng,
+        address: locationValue.address.trim(),
       },
-      status: "Available",
+      status: "available",
       ownerType: "VendorOwned",
       vendorId: user?.id ?? "vendor-unknown",
       vendorName: user?.name ?? "Your Shop",
@@ -175,15 +180,12 @@ export default function CreateListing() {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Location / Address</Label>
-            <Input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g. Westlands, Nairobi"
-              required
-            />
-          </div>
+          <LocationPicker
+            label="Pickup Location"
+            value={locationValue}
+            onChange={setLocationValue}
+            height="260px"
+          />
 
           <div className="flex items-center justify-between bg-muted rounded-xl p-4">
             <div>

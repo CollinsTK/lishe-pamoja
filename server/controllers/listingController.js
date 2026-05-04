@@ -6,7 +6,7 @@ const Listing = require('../models/Listing');
 const getListings = async (req, res) => {
   try {
     // Populating 'vendor' to get the details of the person who posted
-    const listings = await Listing.find({ status: 'available' }).populate('vendor', 'name location role');
+    const listings = await Listing.find({ status: { $in: ['available', 'partially_claimed'] } }).populate('vendor', 'name location role');
     res.status(200).json(listings);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -41,6 +41,14 @@ const createListing = async (req, res) => {
       isFree,
     } = req.body;
 
+    const expiryDate = new Date(expiryDateTime);
+    const pickupStartDate = pickupWindowStart
+      ? new Date(pickupWindowStart)
+      : new Date(`${expiryDateTime.split('T')[0]}T${pickupStart || '08:00'}`);
+    const pickupEndDate = pickupWindowEnd
+      ? new Date(pickupWindowEnd)
+      : new Date(`${expiryDateTime.split('T')[0]}T${pickupEnd || '18:00'}`);
+
     const listing = await Listing.create({
       title,
       description,
@@ -48,9 +56,9 @@ const createListing = async (req, res) => {
       availableQuantity: availableQuantity || quantity,
       unit,
       foodCondition: foodCondition || 'Packaged',
-      expiryDateTime,
-      pickupWindowStart: pickupWindowStart || pickupStart,
-      pickupWindowEnd: pickupWindowEnd || pickupEnd,
+      expiryDateTime: expiryDate,
+      pickupWindowStart: pickupStartDate,
+      pickupWindowEnd: pickupEndDate,
       price: price || 0,
       category,
       images: images || [],

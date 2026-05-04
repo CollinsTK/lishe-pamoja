@@ -21,7 +21,7 @@ export default function VendorReports() {
   const completedOrders = vendorOrders.filter(o => o.status === "Completed" || o.status === "Confirmed").length;
   const totalOrders = vendorOrders.length;
   const fulfillmentRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
-  const expiredListings = vendorListings.filter(l => l.status === "Expired").length;
+  const expiredListings = vendorListings.filter(l => l.status === "expired").length;
   const expiryRate = vendorListings.length > 0 ? Math.round((expiredListings / vendorListings.length) * 100) : 0;
   const avgClaimsPerDay = totalOrders > 0 ? (totalOrders / 30).toFixed(1) : "0";
 

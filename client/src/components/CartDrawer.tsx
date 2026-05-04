@@ -9,8 +9,9 @@ import { Wallet, Smartphone, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/apiClient";
+import { useData } from '@/contexts/DataContext';
 
-export function CartDrawer() {
+export function CartDrawer() {const { fetchListings, fetchTransactions } = useData();
   const { cartItems, removeFromCart, updateQuantity, getCartTotal, clearCart } = useCart();
   const { user, updateAuthUser } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -28,45 +29,56 @@ export function CartDrawer() {
   };
 
   const processOrderGroup = async () => {
-    try {
-      setIsProcessingPayment(true);
-      
-      const payload = {
-        items: cartItems.map(item => ({
-          listingId: item.listing.id,
-          quantity: item.quantity,
-          fulfillmentMode: item.fulfillmentMode,
-          deliveryFee: item.deliveryFee
-        })),
-        phoneNumber: paymentMethod === 'mpesa' ? mpesaPhone : undefined
-      };
+  try {
+    setIsProcessingPayment(true);
+    
+    const payload = {
+      items: cartItems.map(item => ({
+        listingId: item.listing.id,
+        quantity: item.quantity,
+        fulfillmentMode: item.fulfillmentMode,
+        deliveryFee: item.deliveryFee
+      })),
+      phoneNumber: paymentMethod === 'mpesa' ? mpesaPhone : undefined
+    };
 
-      await apiClient.post('/transactions/checkout', payload);
+    await apiClient.post('/transactions/checkout', payload);
 
-      if (paymentMethod === "wallet") {
-        const total = getCartTotal();
-        const currentBalance = user?.walletBalance || 0;
-        if (currentBalance < total) {
-          toast.error("Insufficient wallet balance.");
-          setIsProcessingPayment(false);
-          return;
-        }
-        updateAuthUser({ walletBalance: currentBalance - total });
+    if (paymentMethod === "wallet") {
+      const total = getCartTotal();
+      const currentBalance = user?.walletBalance || 0;
+      if (currentBalance < total) {
+        toast.error("Insufficient wallet balance.");
+        setIsProcessingPayment(false);
+        return;
       }
-
-      toast.success("Checkout Successful!", {
-        description: `Your order for ${itemCount} items has been placed.`,
-      });
-      clearCart();
-      setIsPaymentDialogOpen(false);
-      // Optional: trigger a data reload here, perhaps by window.location.reload() or refreshing context
-      setTimeout(() => window.location.href = '/orders', 1500);
-    } catch (error: any) {
-      toast.error(error.message || "Checkout failed. Please try again.");
-    } finally {
-      setIsProcessingPayment(false);
+      updateAuthUser({ walletBalance: currentBalance - total });
     }
-  };
+
+    toast.success("Checkout Successful!", {
+      description: `Your order for ${itemCount} items has been placed.`,
+    });
+    
+    clearCart();
+    setIsPaymentDialogOpen(false);
+    
+    // Refetch listings and transactions to get updated data
+    await Promise.all([
+      fetchListings(),
+      fetchTransactions()
+    ]);
+    
+    // Navigate to orders page
+    setTimeout(() => {
+      window.location.href = '/orders';
+    }, 1500);
+    
+  } catch (error: any) {
+    toast.error(error.message || "Checkout failed. Please try again.");
+  } finally {
+    setIsProcessingPayment(false);
+  }
+};
 
   return (
     <>

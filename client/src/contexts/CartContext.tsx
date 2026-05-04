@@ -1,16 +1,23 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Listing } from '../types';
 
+export interface DeliveryLocation {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
 export interface CartItem {
   listing: Listing;
   quantity: number;
   fulfillmentMode: 'Pickup' | 'Delivery';
   deliveryFee: number;
+  deliveryLocation?: DeliveryLocation;
 }
 
 interface CartContextType {
   cartItems: CartItem[];
-  addToCart: (listing: Listing, quantity: number, fulfillmentMode: 'Pickup' | 'Delivery', deliveryFee: number) => void;
+  addToCart: (listing: Listing, quantity: number, fulfillmentMode: 'Pickup' | 'Delivery', deliveryFee: number, deliveryLocation?: DeliveryLocation) => void;
   removeFromCart: (listingId: string) => void;
   updateQuantity: (listingId: string, quantity: number) => void;
   clearCart: () => void;
@@ -22,17 +29,17 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
-  const addToCart = (listing: Listing, quantity: number, fulfillmentMode: 'Pickup' | 'Delivery', deliveryFee: number) => {
+  const addToCart = (listing: Listing, quantity: number, fulfillmentMode: 'Pickup' | 'Delivery', deliveryFee: number, deliveryLocation?: DeliveryLocation) => {
     setCartItems(prev => {
       const existing = prev.find(item => item.listing.id === listing.id);
       if (existing) {
         return prev.map(item => 
           item.listing.id === listing.id 
-            ? { ...item, quantity: item.quantity + quantity, fulfillmentMode, deliveryFee } 
+            ? { ...item, quantity: item.quantity + quantity, fulfillmentMode, deliveryFee, deliveryLocation } 
             : item
         );
       }
-      return [...prev, { listing, quantity, fulfillmentMode, deliveryFee }];
+      return [...prev, { listing, quantity, fulfillmentMode, deliveryFee, deliveryLocation }];
     });
   };
 

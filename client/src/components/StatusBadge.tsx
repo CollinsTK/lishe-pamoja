@@ -1,14 +1,20 @@
 import { cn } from "@/lib/utils";
 
 const statusColors: Record<string, string> = {
-  Available: "bg-success/10 text-success",
-  Reserved: "bg-warning/10 text-warning",
-  Sold: "bg-primary/10 text-primary",
-  Expired: "bg-destructive/10 text-destructive",
-  Cancelled: "bg-muted text-muted-foreground",
-  Pending: "bg-warning/10 text-warning",
-  Confirmed: "bg-success/10 text-success",
-  Completed: "bg-primary/10 text-primary",
+  // Listing statuses (backend exact)
+  available: "bg-success/10 text-success",
+  partially_claimed: "bg-warning/10 text-warning",
+  fully_claimed: "bg-primary/10 text-primary",
+  expired: "bg-destructive/10 text-destructive",
+  cancelled: "bg-muted text-muted-foreground",
+  // Transaction statuses (backend exact)
+  CLAIMED: "bg-warning/10 text-warning",
+  LOGISTICS_ASSIGNED: "bg-secondary/10 text-secondary",
+  IN_TRANSIT: "bg-primary/10 text-primary",
+  DELIVERED: "bg-success/10 text-success",
+  COMPLETED: "bg-primary/10 text-primary",
+  CANCELLED: "bg-muted text-muted-foreground",
+  // Dispatch statuses
   Assigned: "bg-secondary/10 text-secondary",
   PickedUp: "bg-warning/10 text-warning",
   InTransit: "bg-primary/10 text-primary",
@@ -28,3 +34,4 @@ export function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+

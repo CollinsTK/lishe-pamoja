@@ -5,13 +5,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import { toast } from "sonner";
+import { useEffect } from "react";
 
-const statusOptions = ["Pending", "Confirmed", "Ready", "Completed", "Cancelled"];
+const statusOptions = ["CLAIMED", "LOGISTICS_ASSIGNED", "IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"];
 
 export default function VendorOrders() {
   const { user } = useAuth();
-  const { orders, updateOrder, dispatches } = useData();
+  const { orders, updateOrder, dispatches, fetchTransactions } = useData();
   const vendorOrders = orders.filter((o) => o.vendorId === user?.id);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
 
   const handleStatusChange = (orderId: string, newStatus: string) => {
     updateOrder(orderId, { status: newStatus });
@@ -19,9 +24,9 @@ export default function VendorOrders() {
   };
 
   // Calculate stats
-  const pendingCount = vendorOrders.filter(o => o.status === "Pending").length;
-  const confirmedCount = vendorOrders.filter(o => o.status === "Confirmed" || o.status === "Ready").length;
-  const completedCount = vendorOrders.filter(o => o.status === "Completed").length;
+  const pendingCount = vendorOrders.filter(o => o.status === "CLAIMED").length;
+  const confirmedCount = vendorOrders.filter(o => o.status === "LOGISTICS_ASSIGNED" || o.status === "IN_TRANSIT").length;
+  const completedCount = vendorOrders.filter(o => o.status === "DELIVERED" || o.status === "COMPLETED").length;
   const totalRevenue = vendorOrders.reduce((sum, o) => sum + o.totalPrice, 0);
 
   return (

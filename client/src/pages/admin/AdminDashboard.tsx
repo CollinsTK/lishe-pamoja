@@ -8,7 +8,7 @@ export default function AdminDashboard() {
 
   // Calculate real KPIs
   const totalListings = listings.length;
-  const activeListings = listings.filter(l => l.status === "Available").length;
+  const activeListings = listings.filter(l => l.status === "available" || l.status === "partially_claimed").length;
   const totalOrders = orders.length;
   const activeOrders = orders.filter(o => o.status === "Pending" || o.status === "Confirmed").length;
   const totalUsers = users.length;
@@ -94,3 +94,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

@@ -29,7 +29,7 @@ const CancelButton = ({ order, onCancel }: { order: Order, onCancel: () => void 
     return () => clearInterval(interval);
   }, [order.createdAt]);
 
-  if (timeLeft <= 0 || order.status === "Cancelled" || order.status === "Completed" || order.status === "Delivered") return null;
+  if (timeLeft <= 0 || order.status === "CANCELLED" || order.status === "COMPLETED" || order.status === "DELIVERED") return null;
 
   const minutes = Math.floor(timeLeft / 60000);
   const seconds = Math.floor((timeLeft % 60000) / 1000);
@@ -43,8 +43,12 @@ const CancelButton = ({ order, onCancel }: { order: Order, onCancel: () => void 
 
 export default function RecipientOrders() {
   const { user, updateAuthUser } = useAuth();
-  const { orders, dispatches, updateOrder, listings, updateListing, updateUserWallet, users } = useData();
+  const { orders, dispatches, updateOrder, listings, updateListing, updateUserWallet, users, fetchTransactions } = useData();
   const recipientOrders = orders.filter((order) => order.recipientId === user?.id);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
 
   const downloadReport = () => {
     const reportData = recipientOrders.map(order => {
@@ -79,14 +83,14 @@ export default function RecipientOrders() {
 
   const handleCancel = (order: Order) => {
     if (!user) return;
-    updateOrder(order.id, { status: "Cancelled" });
+    updateOrder(order.id, { status: "CANCELLED" });
     
     // Restore listing quantity
     const listing = listings.find(l => l.id === order.listingId);
     if (listing) {
       updateListing(listing.id, { 
         quantity: listing.quantity + order.orderedQuantity,
-        status: listing.quantity + order.orderedQuantity > 0 ? "Available" : "Sold"
+        status: listing.quantity + order.orderedQuantity > 0 ? "available" : "fully_claimed"
       });
     }
 
@@ -150,10 +154,10 @@ export default function RecipientOrders() {
                 <span className="font-heading font-bold text-foreground">KES {order.totalPrice}</span>
               </div>
               <div className="flex items-center gap-1 pt-2">
-                {["Pending", "Confirmed", "Completed"].map((step, i) => {
-                  const steps = ["Pending", "Confirmed", "Completed"];
+                {["CLAIMED", "IN_TRANSIT", "DELIVERED"].map((step, i) => {
+                  const steps = ["CLAIMED", "IN_TRANSIT", "DELIVERED"];
                   const currentIdx = steps.indexOf(order.status);
-                  const isActive = i <= currentIdx && order.status !== "Cancelled";
+                  const isActive = i <= currentIdx && order.status !== "CANCELLED";
                   return (
                     <div key={step} className="flex items-center gap-1 flex-1">
                       <div className={`w-2.5 h-2.5 rounded-full ${isActive ? "bg-primary" : "bg-border"}`} />
@@ -163,9 +167,9 @@ export default function RecipientOrders() {
                 })}
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>Pending</span>
-                <span>Confirmed</span>
-                <span>Completed</span>
+                <span>Claimed</span>
+                <span>In Transit</span>
+                <span>Delivered</span>
               </div>
             </Card>
           ))
@@ -174,3 +178,4 @@ export default function RecipientOrders() {
     </div>
   );
 }
+

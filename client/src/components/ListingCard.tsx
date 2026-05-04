@@ -65,7 +65,7 @@ export function ListingCard({ listing, basePath = "/listing" }: ListingCardProps
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground flex items-center gap-1">
             <MapPin className="w-3 h-3" />
-            {listing.location.address}
+                        {listing.location?.address || 'Unknown Location'}
           </span>
           {!listing.isFree && (
             <span className="font-heading font-bold text-sm text-primary">

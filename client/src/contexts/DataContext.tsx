@@ -1,229 +1,311 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Listing, Order, Dispatch, User, SubscriptionPlan } from "@/types";
-import { samplePlans } from "@/data/sampleData";
-import { apiClient } from "@/lib/apiClient";
+﻿import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { apiClient } from '../lib/apiClient';
+import { Listing, Order } from '../types/index';
 
 interface DataContextType {
   listings: Listing[];
+  users: any[];
   orders: Order[];
-  dispatches: Dispatch[];
-  users: User[];
-  subscriptionPlans: SubscriptionPlan[];
-  addListing: (listing: Listing) => void;
-  updateListing: (listingId: string, updates: Partial<Listing>) => void;
-  deleteListing: (listingId: string) => void;
-  addOrder: (order: Order) => void;
-  updateOrder: (orderId: string, updates: Partial<Order>) => void;
-  addDispatch: (dispatch: Dispatch) => void;
-  updateDispatch: (dispatchId: string, updates: Partial<Dispatch>) => void;
-  addUser: (user: User) => void;
-  updateUser: (userId: string, updates: Partial<User>) => void;
+  dispatches: any[];
+  subscriptionPlans: any[];
+  isLoading: boolean;
+  fetchData: () => Promise<void>;
+  fetchListings: () => Promise<void>;
+  fetchUsers: () => Promise<void>;
+  fetchTransactions: () => Promise<void>;
+  fetchAllSubscriptionPlans: () => Promise<void>;
+  updateListing: (id: string, updates: Partial<Listing>) => void;
+  updateOrder: (id: string, updates: any) => void;
   updateUserWallet: (userId: string, amount: number) => void;
-  verifyUser: (userId: string) => void;
-  addSubscriptionPlan: (plan: SubscriptionPlan) => void;
-  updateSubscriptionPlan: (planId: string, updates: Partial<SubscriptionPlan>) => void;
+  addSubscriptionPlan: (plan: any) => void;
   deleteSubscriptionPlan: (planId: string) => void;
+  createSubscriptionPlan: (plan: any) => Promise<any>;
+  updateSubscriptionPlan: (planId: string, updates: any) => Promise<any>;
+  startListingsPolling: () => void;
+  stopListingsPolling: () => void;
 }
+const DataContext = createContext<DataContextType | undefined>(undefined);
 
-const DataContext = createContext<DataContextType | null>(null);
-const LISTINGS_STORAGE_KEY = "lisheListings";
-const ORDERS_STORAGE_KEY = "lisheOrders";
-const DISPATCHES_STORAGE_KEY = "lisheDispatches";
-const USERS_STORAGE_KEY = "lisheUsers";
-const PLANS_STORAGE_KEY = "lishePlans";
-
-function loadFromStorage<T>(key: string, fallback: T) {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (stored) {
-      let parsed = JSON.parse(stored) as T;
-      // Scrub out the old dummy data IDs that look like "l1", "o2", "d1", "u1", "admin1", "n1"
-      if (Array.isArray(parsed)) {
-        parsed = parsed.filter((item: any) => {
-          if (item && typeof item.id === "string") {
-            if (/^[a-zA-Z]+\d$/.test(item.id)) {
-              return false;
-            }
-          }
-          return true;
-        }) as unknown as T;
-      }
-      return parsed;
-    }
-    return fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const defaultUsers: User[] = [];
-const defaultListings: Listing[] = [];
-const defaultOrders: Order[] = [];
-const defaultDispatches: Dispatch[] = [];
-const defaultPlans: SubscriptionPlan[] = [];
-
-export function DataProvider({ children }: { children: ReactNode }) {
-  const [listings, setListings] = useState<Listing[]>(defaultListings);
-  const [orders, setOrders] = useState<Order[]>(defaultOrders);
-  const [dispatches, setDispatches] = useState<Dispatch[]>(defaultDispatches);
-  const [users, setUsers] = useState<User[]>(defaultUsers);
-  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>(defaultPlans);
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [dispatches, setDispatches] = useState<any[]>([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchData = async () => {
+  // Transform backend listing to frontend Listing type
+  const readListing = (listing: any): Listing => ({
+    id: listing._id || listing.id,
+    title: listing.title,
+    description: listing.description,
+    images: listing.images || [],
+    quantity: listing.availableQuantity,
+    unit: listing.unit,
+    price: listing.price,
+    isFree: listing.isFree,
+    category: listing.category,
+    pickupStart: listing.pickupWindowStart?.split('T')[1] || '08:00',
+    pickupEnd: listing.pickupWindowEnd?.split('T')[1] || '18:00',
+    pickupWindowStart: listing.pickupWindowStart,
+    pickupWindowEnd: listing.pickupWindowEnd,
+    expiryDateTime: listing.expiryDateTime,
+    deliveryAllowed: listing.deliveryAllowed,
+        location: listing.location || { lat: 0, lng: 0, address: 'Unknown Location' },
+    status: listing.status,
+    ownerType: 'VendorOwned',
+    vendorId: listing.vendor?._id || listing.vendor,
+    vendorName: listing.vendor?.name || 'Unknown Vendor',
+    createdAt: listing.createdAt,
+  });
+  // Transform backend transaction to frontend Order type
+  const readTransaction = (transaction: any): Order => {
+    const listing = transaction.listingId;
+    const basePrice = (listing?.price || 0) * transaction.quantity;
+    const logisticsFee = transaction.deliveryFee || 0;
+    const totalPrice = basePrice + logisticsFee;
+
+    return {
+      id: transaction._id,
+      listingId: listing?._id,
+      listingTitle: listing?.title || 'Unknown Listing',
+      recipientId: transaction.recipientId?._id || transaction.recipientId,
+      vendorId: transaction.vendorId?._id || transaction.vendorId,
+      orderedQuantity: transaction.quantity,
+      unit: listing?.unit || 'unit',
+      orderType: listing?.isFree ? 'Claim' : 'Purchase',
+      fulfillmentMode: transaction.fulfillmentMode,
+      basePrice,
+      logisticsFee,
+      totalPrice,
+      status: transaction.status,
+      createdAt: transaction.createdAt,
+    };
+  };
+
+  // Fetch only listings
+  const fetchListings = async () => {
     try {
-      const [listingsRes, usersRes, transactionsRes] = await Promise.all([
-        apiClient.get('/listings').catch(() => []),
-        apiClient.get('/users').catch(() => []), 
-        apiClient.get('/transactions').catch(() => ({ transactions: [] })),
-      ]);
-
+      const listingsRes = await apiClient.get('/listings').catch(() => []);
       if (Array.isArray(listingsRes)) {
-        // Map _id to id and map backend statuses to frontend statuses
-        const mappedListings = listingsRes.map(l => {
-          let mappedStatus = "Available";
-          if (l.status === 'fully_claimed') mappedStatus = "Sold";
-          if (l.status === 'expired') mappedStatus = "Expired";
-          if (l.status === 'cancelled') mappedStatus = "Cancelled";
-          
-          return { 
-            ...l, 
-            id: l._id || l.id, 
-            quantity: l.availableQuantity,
-            status: mappedStatus
-          };
-        });
-        setListings(mappedListings);
+        setListings(listingsRes.map(readListing));
       }
-      
+    } catch (error) {
+      console.error('Error fetching listings:', error);
+    }
+  };
+
+  // Fetch only users
+  const fetchUsers = async () => {
+    try {
+      const usersRes = await apiClient.get('/users').catch(() => []);
       if (Array.isArray(usersRes)) {
         const mappedUsers = usersRes.map(u => ({ ...u, id: u._id || u.id }));
         setUsers(mappedUsers);
       }
-      
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
+  // Fetch only transactions
+  const fetchTransactions = async () => {
+    try {
+      const transactionsRes = await apiClient.get('/transactions').catch(() => ({ transactions: [] }));
       if (transactionsRes.transactions && Array.isArray(transactionsRes.transactions)) {
-        const mappedTransactions = transactionsRes.transactions.map((t: any) => ({ ...t, id: t._id || t.id }));
-        setOrders(mappedTransactions);
-        
-        const dispatchesList = mappedTransactions.filter((t: any) => t.logisticsId);
-        setDispatches(dispatchesList);
+        const mapped = transactionsRes.transactions.map(readTransaction);
+        setOrders(mapped);
       }
     } catch (error) {
-      console.error("Error fetching data:", error);
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+  // Fetch subscription plans from API
+  const fetchSubscriptionPlans = async () => {
+    try {
+      const response = await apiClient.get('/subscription-plans').catch(() => ({ plans: [] }));
+      if (response.plans && Array.isArray(response.plans)) {
+        setSubscriptionPlans(response.plans);
+      }
+    } catch (error) {
+      console.error('Error fetching subscription plans:', error);
+    }
+  };
+
+  // Fetch all subscription plans (admin only)
+  const fetchAllSubscriptionPlans = async () => {
+    try {
+      const response = await apiClient.get('/subscription-plans/admin/all').catch(() => ({ plans: [] }));
+      if (response.plans && Array.isArray(response.plans)) {
+        setSubscriptionPlans(response.plans);
+      }
+    } catch (error) {
+      console.error('Error fetching all subscription plans:', error);
+    }
+  };
+
+  // Create subscription plan (admin only)
+  const createSubscriptionPlan = async (plan: any) => {
+    try {
+      const response = await apiClient.post('/subscription-plans/admin', plan);
+      if (response.success && response.plan) {
+        setSubscriptionPlans(prev => [...prev, response.plan]);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error creating subscription plan:', error);
+      throw error;
+    }
+  };
+
+  // Update subscription plan (admin only)
+  const updateSubscriptionPlan = async (planId: string, updates: any) => {
+    try {
+      const response = await apiClient.put(`/subscription-plans/admin/${planId}`, updates);
+      if (response.success && response.plan) {
+        setSubscriptionPlans(prev => prev.map(p => p.planId === planId ? response.plan : p));
+      }
+      return response;
+    } catch (error) {
+      console.error('Error updating subscription plan:', error);
+      throw error;
+    }
+  };
+
+  // Delete subscription plan (admin only)
+  const deleteSubscriptionPlan = async (planId: string) => {
+    try {
+      await apiClient.delete(`/subscription-plans/admin/${planId}`);
+      setSubscriptionPlans(prev => prev.filter(p => p.planId !== planId));
+    } catch (error) {
+      console.error('Error deleting subscription plan:', error);
+      throw error;
+    }
+  };
+
+  // Fetch dispatches (transactions with logistics)
+  const fetchDispatches = async () => {
+    try {
+      const dispatchesRes = await apiClient.get('/transactions').catch(() => ({ transactions: [] }));
+      if (dispatchesRes.transactions && Array.isArray(dispatchesRes.transactions)) {
+        // Filter for delivery orders with logistics assigned
+        const dispatches = dispatchesRes.transactions.filter(
+          (t: any) => t.fulfillmentMode === 'Delivery' && t.logisticsId
+        );
+        setDispatches(dispatches);
+      }
+    } catch (error) {
+      console.error('Error fetching dispatches:', error);
+    }
+  };
+
+  // Fetch all data (used on initial mount)
+  const fetchData = async () => {
+    try {
+      await Promise.all([
+        fetchListings(), 
+        fetchUsers(), 
+        fetchTransactions(),
+        fetchSubscriptionPlans(),
+        fetchDispatches()
+      ]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // Start polling listings every 10 seconds
+  const startListingsPolling = () => {
+    if (pollingIntervalRef.current) {
+      // Already polling
+      return;
+    }
 
-  const addListing = async (listing: Listing) => {
-    try {
-      const res = await apiClient.post('/listings', listing);
-      const savedListing = { ...res, id: res._id || res.id, quantity: res.availableQuantity };
-      setListings((prev) => [savedListing, ...prev]);
-    } catch (e) {
-      console.error(e);
-      // Fallback
-      setListings((prev) => [listing, ...prev]);
+    // Initial fetch
+    fetchListings();
+
+    // Set up polling interval
+    pollingIntervalRef.current = setInterval(() => {
+      fetchListings();
+    }, 10000); // Poll every 10 seconds
+  };
+
+  // Stop polling listings
+  const stopListingsPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
     }
   };
 
-  const updateListing = async (listingId: string, updates: Partial<Listing>) => {
-    try {
-      await apiClient.put(`/listings/${listingId}`, updates);
-    } catch (e) { console.error(e); }
-    setListings((prev) => prev.map((l) => (l.id === listingId ? { ...l, ...updates } : l)));
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchData();
+
+    // Cleanup polling on unmount
+    return () => {
+      stopListingsPolling();
+    };
+  }, []);
+
+  // Optimistic update for listings
+  const updateListing = (id: string, updates: Partial<Listing>) => {
+    setListings(listings.map(l => (l.id === id ? { ...l, ...updates } : l)));
   };
 
-  const deleteListing = async (listingId: string) => {
-    try {
-      await apiClient.delete(`/listings/${listingId}`);
-    } catch (e) { console.error(e); }
-    setListings((prev) => prev.filter((l) => l.id !== listingId));
+  // Add a subscription plan (local optimistic update)
+  const addSubscriptionPlan = (plan: any) => {
+    setSubscriptionPlans(prev => [...prev.filter(p => p.planId !== plan.planId), plan]);
   };
 
-  const updateOrder = async (orderId: string, updates: Partial<Order>) => {
-    try {
-      // For status updates
-      if (updates.status === 'Cancelled') {
-        await apiClient.put(`/transactions/${orderId}/cancel`, {});
-      } else if (updates.status === 'IN_TRANSIT') {
-        await apiClient.put(`/transactions/${orderId}/verify-pickup`, { pin: 'dummy' });
-      } else if (updates.status === 'DELIVERED') {
-        await apiClient.put(`/transactions/${orderId}/verify-delivery`, { pin: 'dummy' });
-      } else if (updates.status === 'LOGISTICS_ASSIGNED') {
-        await apiClient.put(`/transactions/${orderId}/accept`, {});
-      }
-    } catch (e) { console.error(e); }
-    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, ...updates } : o)));
+  // Optimistic update for orders
+  const updateOrder = (id: string, updates: any) => {
+    setOrders(orders.map(o => (o.id === id ? { ...o, ...updates } : o)));
   };
 
-  const addOrder = async (order: Order) => {
-    // handled via checkoutCart usually
-    setOrders((prev) => [order, ...prev]);
-  };
-
-  const addDispatch = (dispatch: Dispatch) => {
-    setDispatches((prev) => [dispatch, ...prev]);
-  };
-
-  const updateDispatch = (dispatchId: string, updates: Partial<Dispatch>) => {
-    setDispatches((prev) => prev.map((d) => (d.id === dispatchId ? { ...d, ...updates } : d)));
-  };
-
-  const addUser = (user: User) => {
-    setUsers((prev) => [...prev, user]);
-  };
-
-  const updateUser = (userId: string, updates: Partial<User>) => {
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updates } : u)));
-  };
-
+  // Optimistic wallet update for a user
   const updateUserWallet = (userId: string, amount: number) => {
-    setUsers((prev) => {
-      const exists = prev.some(u => u.id === userId);
-      if (exists) {
-        return prev.map(u => u.id === userId ? { ...u, walletBalance: (u.walletBalance || 0) + amount } : u);
-      } else {
-        return [...prev, { id: userId, name: "User", email: "", role: "recipient", phone: "", walletBalance: amount }];
-      }
-    });
-  };
-
-  const verifyUser = (userId: string) => {
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, verified: true } : u)));
-  };
-
-  const addSubscriptionPlan = (plan: SubscriptionPlan) => {
-    setSubscriptionPlans((prev) => [...prev, plan]);
-  };
-
-  const updateSubscriptionPlan = (planId: string, updates: Partial<SubscriptionPlan>) => {
-    setSubscriptionPlans((prev) => prev.map((p) => (p.id === planId ? { ...p, ...updates } : p)));
-  };
-
-  const deleteSubscriptionPlan = (planId: string) => {
-    setSubscriptionPlans((prev) => prev.filter((p) => p.id !== planId));
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, walletBalance: (u.walletBalance || 0) + amount } : u));
   };
 
   return (
-    <DataContext.Provider value={{
-      listings, orders, dispatches, users, subscriptionPlans,
-      addListing, updateListing, deleteListing, addOrder, updateOrder, addDispatch, updateDispatch,
-      addUser, updateUser, updateUserWallet, verifyUser,
-      addSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan
-    }}>
-      {isLoading ? <div className="min-h-screen flex items-center justify-center">Loading...</div> : children}
+    <DataContext.Provider
+      value={{
+        listings,
+        users,
+        orders,
+        dispatches,
+        subscriptionPlans,
+        isLoading,
+        fetchData,
+        fetchListings,
+        fetchUsers,
+        fetchTransactions,
+        fetchAllSubscriptionPlans,
+        updateListing,
+        updateOrder,
+        updateUserWallet,
+        addSubscriptionPlan,
+        deleteSubscriptionPlan,
+        createSubscriptionPlan,
+        updateSubscriptionPlan,
+        startListingsPolling,
+        stopListingsPolling,
+      }}
+    >
+      {children}
     </DataContext.Provider>
   );
-}
+};
 
-export function useData() {
-  const ctx = useContext(DataContext);
-  if (!ctx) throw new Error("useData must be used inside a DataProvider");
-  return ctx;
-}
+export const useData = () => {
+  const context = useContext(DataContext);
+  if (!context) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
+};

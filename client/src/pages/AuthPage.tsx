@@ -1,31 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { User, UserRole } from "@/types";
+import { User } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Store, Truck, Shield } from "lucide-react";
 import logoUrl from "@/assets/lishe-logo.svg";
 import { apiClient } from "@/lib/apiClient";
 
-const roles: { value: UserRole; label: string; icon: any; desc: string }[] = [
-  { value: "recipient", label: "Recipient", icon: Users, desc: "Browse & claim surplus food" },
-  { value: "vendor", label: "Vendor", icon: Store, desc: "List surplus food for redistribution" },
-  { value: "logistics", label: "Logistics Partner", icon: Truck, desc: "Deliver food to recipients" },
-  { value: "admin", label: "Admin", icon: Shield, desc: "Manage the platform" },
-];
-
-const roleRoutes: Record<UserRole, string> = {
-  recipient: "/",
-  vendor: "/vendor",
-  logistics: "/logistics",
-  admin: "/admin",
-};
-
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const [selectedRole, setSelectedRole] = useState<UserRole>("recipient");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,7 +29,7 @@ export default function AuthPage() {
       const endpoint = isLogin ? "/users/login" : "/users/register";
       const payload = isLogin
         ? { email, password }
-        : { name, email, password, phone, role: selectedRole };
+        : { name, email, password, phone };
 
       const data = await apiClient.post(endpoint, payload);
 
@@ -53,12 +37,15 @@ export default function AuthPage() {
         id: data._id,
         name: data.name,
         email: data.email,
-        role: data.role,
+        role: data.role ?? "user",
+        capabilities: data.capabilities ?? { canBrowse: true, canSell: false, canDeliver: false },
+        isAdmin: data.isAdmin ?? false,
         phone: data.phone ?? phone ?? "",
       };
 
       login(user, data.token);
-      navigate(roleRoutes[data.role] ?? "/");
+      // All users go to unified dashboard
+      navigate("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -85,25 +72,9 @@ export default function AuthPage() {
           </h2>
 
           {!isLogin && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">I am a...</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {roles.map((r) => (
-                  <button
-                    key={r.value}
-                    type="button"
-                    onClick={() => setSelectedRole(r.value)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      selectedRole === r.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/30"
-                    }`}
-                  >
-                    <r.icon className={`w-5 h-5 mb-1 ${selectedRole === r.value ? "text-primary" : "text-muted-foreground"}`} />
-                    <p className="text-xs font-semibold">{r.label}</p>
-                    <p className="text-[10px] text-muted-foreground">{r.desc}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-center text-sm text-muted-foreground">
+              Sign up to browse, purchase, and subscribe to vendor or logistics features.
+            </p>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">

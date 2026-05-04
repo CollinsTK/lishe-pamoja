@@ -27,8 +27,8 @@ const generateToken = (id) => {
 // @route   POST /api/users/register
 const registerUser = async (req, res) => {
   try {
-    // 1. Grabbing all the fields including role, location, and phone
-    const { name, email, password, role, location, phone } = req.body;
+    // 1. Grabbing all the fields - role is no longer required, defaults to 'user'
+    const { name, email, password, location, phone } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -38,14 +38,24 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 2. Saving them all to MongoDB
+    // 2. Create user with default capabilities (free tier: canBrowse only)
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role,       
-      location,   
-      phone       
+      role: 'user',       // Default role
+      capabilities: {
+        canBrowse: true,
+        canSell: false,
+        canDeliver: false,
+      },
+      isAdmin: false,
+      location,
+      phone,
+      subscription: {
+        plan: 'free',
+        status: 'active',
+      },
     });
 
     if (user) {
@@ -55,9 +65,12 @@ const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        capabilities: user.capabilities,
+        isAdmin: user.isAdmin,
         phone: user.phone,
         location: user.location,
         walletBalance: user.walletBalance,
+        subscription: user.subscription,
         token: generateToken(user._id),
       });
     } else {
@@ -83,9 +96,12 @@ const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        capabilities: user.capabilities || { canBrowse: true, canSell: false, canDeliver: false },
+        isAdmin: user.isAdmin || false,
         phone: user.phone,
         location: user.location,
         walletBalance: user.walletBalance,
+        subscription: user.subscription,
         token: generateToken(user._id),
       });
     } else {
@@ -102,7 +118,13 @@ const getUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
     if (user) {
-      res.json(user);
+      // Ensure capabilities are always returned
+      const response = {
+        ...user.toObject(),
+        capabilities: user.capabilities || { canBrowse: true, canSell: false, canDeliver: false },
+        isAdmin: user.isAdmin || false,
+      };
+      res.json(response);
     } else {
       res.status(404).json({ message: 'User not found' });
     }
@@ -124,20 +146,15 @@ const getAllUsers = async (req, res) => {
 };
 
 // ============== Subscription Functions ==============
+const SubscriptionPlan = require('../models/SubscriptionPlan');
 
 /**
  * Get all available subscription plans
+ * Now fetches from database instead of static config
  */
 const getSubscriptionPlans = async (req, res) => {
   try {
-    const plans = Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
-      id: key,
-      name: plan.name,
-      price: plan.price,
-      duration: plan.duration,
-      features: plan.features,
-      limits: plan.limits,
-    }));
+    const plans = await SubscriptionPlan.find({ isActive: true }).sort({ price: 1 });
 
     res.status(200).json({
       success: true,
@@ -149,83 +166,177 @@ const getSubscriptionPlans = async (req, res) => {
 };
 
 /**
- * Subscribe to a plan (initial subscription)
+ * Subscribe to a plan with wallet or M-Pesa payment
+ * Supports 5-second simulated delay for both payment methods
  */
 const subscribeToPlan = async (req, res) => {
   try {
-    const { planId, phoneNumber } = req.body;
+    const { planId, paymentMethod, phoneNumber } = req.body;
     const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    if (!planId || !phoneNumber) {
-      return res.status(400).json({ success: false, message: 'planId and phoneNumber are required' });
+    if (!planId || !paymentMethod) {
+      return res.status(400).json({ success: false, message: 'planId and paymentMethod are required' });
     }
 
-    // Validate plan
-    const plan = SUBSCRIPTION_PLANS[planId];
-    if (!plan) {
-      return res.status(400).json({ success: false, message: 'Invalid plan selected' });
+    if (!['wallet', 'mpesa'].includes(paymentMethod)) {
+      return res.status(400).json({ success: false, message: 'Invalid payment method. Use wallet or mpesa' });
     }
+
+    // Validate plan from database
+    const plan = await SubscriptionPlan.findOne({ planId, isActive: true });
+    if (!plan) {
+      return res.status(400).json({ success: false, message: 'Invalid or inactive plan selected' });
+    }
+
+    const user = await User.findById(userId);
 
     // Free plan - no payment needed
     if (plan.price === 0) {
-      const user = await User.findById(userId);
       user.subscription = {
         plan: planId,
         status: 'active',
         startDate: new Date(),
         endDate: null,
         autoRenew: false,
+        paymentMethod: null,
+      };
+      // Update capabilities based on plan
+      user.capabilities = {
+        canBrowse: true,
+        canSell: plan.capabilities.canSell || false,
+        canDeliver: plan.capabilities.canDeliver || false,
       };
       await user.save();
 
       return res.status(200).json({
         success: true,
-        message: 'Subscribed to Free plan successfully',
+        message: `Subscribed to ${plan.name} plan successfully`,
         subscription: user.subscription,
+        capabilities: user.capabilities,
       });
     }
 
-    // Validate phone number
-    if (!mpesaService.isValidPhoneNumber(phoneNumber)) {
-      return res.status(400).json({ success: false, message: 'Invalid phone number format' });
-    }
-
-    const user = await User.findById(userId);
-    const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
-    const callBackUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/subscription/callback`;
-
-    // Initiate STK Push
-    const result = await mpesaService.initiateSTKPush({
-      phone: formattedPhone,
-      amount: plan.price,
-      accountReference: `LPSUB${userId}`,
-      transactionDesc: `Lishe Pamoja - ${plan.name} Subscription`,
-      callBackUrl,
-    });
-
-    // Update user with pending subscription
+    // Set pending status while processing
     user.subscription = {
       plan: planId,
       status: 'pending',
       startDate: null,
       endDate: null,
       autoRenew: false,
-      mpesaCheckoutRequestId: result.checkoutRequestId,
-      mpesaReceiptNumber: null,
+      paymentMethod,
     };
     await user.save();
 
+    // Simulate 5-second processing delay
+    setTimeout(async () => {
+      try {
+        if (paymentMethod === 'wallet') {
+          // Wallet payment processing
+          if (user.walletBalance < plan.price) {
+            user.subscription.status = 'cancelled';
+            await user.save();
+            return; // Insufficient balance
+          }
+
+          // Deduct from wallet
+          user.walletBalance -= plan.price;
+          
+          // Activate subscription
+          const startDate = new Date();
+          const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
+          
+          user.subscription = {
+            plan: planId,
+            status: 'active',
+            startDate,
+            endDate,
+            autoRenew: false,
+            paymentMethod: 'wallet',
+          };
+          
+          // Update capabilities based on plan
+          user.capabilities = {
+            canBrowse: true,
+            canSell: plan.capabilities.canSell || false,
+            canDeliver: plan.capabilities.canDeliver || false,
+          };
+          
+          // Add to payment history
+          user.paymentHistory.push({
+            amount: plan.price,
+            plan: planId,
+            paidAt: new Date(),
+            status: 'completed',
+            paymentMethod: 'wallet',
+          });
+          
+          // Add to subscription history
+          user.subscriptionHistory.push({
+            plan: planId,
+            status: 'active',
+            startDate,
+            endDate,
+            paymentMethod: 'wallet',
+            amount: plan.price,
+          });
+          
+          await user.save();
+          console.log(`[WALLET PAYMENT] User ${user.email} subscribed to ${plan.name} for KES ${plan.price}`);
+          
+        } else if (paymentMethod === 'mpesa') {
+          // M-Pesa payment processing
+          if (!phoneNumber || !mpesaService.isValidPhoneNumber(phoneNumber)) {
+            user.subscription.status = 'cancelled';
+            await user.save();
+            return;
+          }
+
+          const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
+          const callBackUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/subscription/callback`;
+
+          try {
+            const result = await mpesaService.initiateSTKPush({
+              phone: formattedPhone,
+              amount: plan.price,
+              accountReference: `LPSUB${userId}`,
+              transactionDesc: `Lishe Pamoja - ${plan.name} Subscription`,
+              callBackUrl,
+            });
+
+            user.subscription.mpesaCheckoutRequestId = result.checkoutRequestId;
+            await user.save();
+            
+            console.log(`[MPESA PAYMENT] STK Push initiated for ${user.email}: ${plan.name} - KES ${plan.price}`);
+          } catch (mpesaError) {
+            user.subscription.status = 'cancelled';
+            await user.save();
+            console.error(`[MPESA ERROR] Failed to initiate payment for ${user.email}:`, mpesaError.message);
+          }
+        }
+      } catch (error) {
+        console.error('Payment processing error:', error);
+        // Attempt to reset user subscription on error
+        try {
+          user.subscription.status = 'cancelled';
+          await user.save();
+        } catch (saveError) {
+          console.error('Failed to reset subscription status:', saveError);
+        }
+      }
+    }, 5000); // 5-second delay
+
     res.status(200).json({
       success: true,
-      message: 'Payment initiated. Please enter your PIN on your phone.',
+      message: 'Payment processing initiated. Please wait...',
       data: {
-        checkoutRequestId: result.checkoutRequestId,
-        amount: plan.price,
         plan: plan.name,
+        amount: plan.price,
+        paymentMethod,
+        processingTime: 5,
       },
     });
   } catch (error) {
@@ -535,6 +646,15 @@ const handleSubscriptionCallback = async (req, res) => {
       user.subscription.mpesaReceiptNumber = MpesaReceiptNumber;
       user.subscription.mpesaCheckoutRequestId = null;
 
+      // Update capabilities based on subscription plan
+      if (planDetails.capabilities) {
+        user.capabilities = {
+          canBrowse: planDetails.capabilities.canBrowse ?? true,
+          canSell: planDetails.capabilities.canSell ?? false,
+          canDeliver: planDetails.capabilities.canDeliver ?? false,
+        };
+      }
+
       // Add to payment history
       user.paymentHistory.push({
         amount: Amount,
@@ -545,7 +665,7 @@ const handleSubscriptionCallback = async (req, res) => {
       });
 
       await user.save();
-      console.log(`Subscription activated for user ${user.email}: ${user.subscription.plan}`);
+      console.log(`Subscription activated for user ${user.email}: ${user.subscription.plan}, capabilities:`, user.capabilities);
     } else {
       // Payment failed
       user.subscription.status = 'active'; // Keep previous plan

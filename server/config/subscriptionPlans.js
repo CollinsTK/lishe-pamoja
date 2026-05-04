@@ -8,15 +8,20 @@ const SUBSCRIPTION_PLANS = {
     name: 'Free',
     price: 0,
     duration: null, // Free forever
+    capabilities: {
+      canBrowse: true,
+      canSell: false,
+      canDeliver: false,
+    },
     features: {
       // Vendor features
-      maxListings: 5,
+      maxListings: 0,
       canFeature: false,
       analytics: false,
       prioritySupport: false,
       
       // Logistics features
-      maxDeliveries: 10,
+      maxDeliveries: 0,
       canAssign: false,
       deliveryAnalytics: false,
       
@@ -25,54 +30,80 @@ const SUBSCRIPTION_PLANS = {
       notifications: 'basic',
     },
     limits: {
-      listings: 5,
-      deliveries: 10,
+      listings: 0,
+      deliveries: 0,
     },
   },
 
-  sp1: {
-    name: 'Starter',
+  vendor: {
+    name: 'Vendor',
     price: 499, // KES 499/month
     duration: 30, // days
+    capabilities: {
+      canBrowse: true,
+      canSell: true,
+      canDeliver: false,
+    },
     features: {
-      // Vendor features
       maxListings: 20,
       canFeature: true,
       analytics: 'basic',
       prioritySupport: false,
-      
-      // Logistics features
-      maxDeliveries: 50,
-      canAssign: true,
-      deliveryAnalytics: 'basic',
-      
-      // Recipient features
+      maxDeliveries: 0,
+      canAssign: false,
+      deliveryAnalytics: false,
       canClaim: true,
       notifications: 'standard',
     },
     limits: {
       listings: 20,
+      deliveries: 0,
+    },
+  },
+
+  logistics: {
+    name: 'Logistics',
+    price: 499, // KES 499/month
+    duration: 30, // days
+    capabilities: {
+      canBrowse: true,
+      canSell: false,
+      canDeliver: true,
+    },
+    features: {
+      maxListings: 0,
+      canFeature: false,
+      analytics: false,
+      prioritySupport: false,
+      maxDeliveries: 50,
+      canAssign: true,
+      deliveryAnalytics: 'basic',
+      canClaim: true,
+      notifications: 'standard',
+    },
+    limits: {
+      listings: 0,
       deliveries: 50,
     },
   },
 
-  sp2: {
-    name: 'Growth',
+  business: {
+    name: 'Business',
     price: 999, // KES 999/month
     duration: 30, // days
+    capabilities: {
+      canBrowse: true,
+      canSell: true,
+      canDeliver: true,
+    },
     features: {
-      // Vendor features
       maxListings: 100,
       canFeature: true,
       analytics: 'advanced',
       prioritySupport: true,
-      
-      // Logistics features
       maxDeliveries: 200,
       canAssign: true,
       deliveryAnalytics: 'advanced',
-      
-      // Recipient features
       canClaim: true,
       notifications: 'all',
     },
@@ -82,23 +113,23 @@ const SUBSCRIPTION_PLANS = {
     },
   },
 
-  sp3: {
+  enterprise: {
     name: 'Enterprise',
     price: 2499, // KES 2,499/month
     duration: 30, // days
+    capabilities: {
+      canBrowse: true,
+      canSell: true,
+      canDeliver: true,
+    },
     features: {
-      // Vendor features
       maxListings: -1, // Unlimited
       canFeature: true,
       analytics: 'full',
       prioritySupport: true,
-      
-      // Logistics features
       maxDeliveries: -1, // Unlimited
       canAssign: true,
       deliveryAnalytics: 'full',
-      
-      // Recipient features
       canClaim: true,
       notifications: 'all',
     },
@@ -111,10 +142,11 @@ const SUBSCRIPTION_PLANS = {
 
 // Plan upgrade paths
 const PLAN_UPGRADE_PATHS = {
-  free: ['sp1', 'sp2', 'sp3'],
-  sp1: ['sp2', 'sp3'],
-  sp2: ['sp3'],
-  sp3: [],
+  free: ['vendor', 'logistics', 'business', 'enterprise'],
+  vendor: ['business', 'enterprise'],
+  logistics: ['business', 'enterprise'],
+  business: ['enterprise'],
+  enterprise: [],
 };
 
 // Check if upgrade is valid

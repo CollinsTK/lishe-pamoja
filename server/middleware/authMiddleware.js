@@ -29,4 +29,75 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+// Middleware to check if user has specific capability
+const requireCapability = (capability) => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized, no user' });
+    }
+
+    // Admin bypass - admins have all capabilities
+    if (req.user.isAdmin) {
+      return next();
+    }
+
+    // Check if user has the required capability
+    const capabilities = req.user.capabilities || {};
+    if (!capabilities[capability]) {
+      return res.status(403).json({
+        message: `Access denied. This feature requires ${capability} capability.`,
+        requiredCapability: capability,
+        currentCapabilities: capabilities,
+      });
+    }
+
+    next();
+  };
+};
+
+// Middleware to check if user is admin
+const requireAdmin = async (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authorized, no user' });
+  }
+
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
+  }
+
+  next();
+};
+
+// Middleware to check multiple capabilities (any one of them)
+const requireAnyCapability = (...capabilities) => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authorized, no user' });
+    }
+
+    // Admin bypass
+    if (req.user.isAdmin) {
+      return next();
+    }
+
+    const userCapabilities = req.user.capabilities || {};
+    const hasAnyCapability = capabilities.some(cap => userCapabilities[cap]);
+
+    if (!hasAnyCapability) {
+      return res.status(403).json({
+        message: `Access denied. Requires one of: ${capabilities.join(', ')}`,
+        requiredCapabilities: capabilities,
+        currentCapabilities: userCapabilities,
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = {
+  protect,
+  requireCapability,
+  requireAdmin,
+  requireAnyCapability,
+};

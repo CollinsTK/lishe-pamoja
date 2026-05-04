@@ -1,18 +1,29 @@
 import { ReactNode } from "react";
 
-export type UserRole = "recipient" | "vendor" | "logistics" | "admin";
+// DEPRECATED: Legacy role system - being replaced by capabilities
+export type UserRole = "user" | "recipient" | "vendor" | "logistics" | "admin";
+
+// User capabilities - determine what features user can access
+export interface UserCapabilities {
+  canBrowse: boolean;    // View listings, claim/purchase
+  canSell: boolean;      // Create listings, manage vendor orders
+  canDeliver: boolean;   // Accept delivery dispatches
+}
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  role: UserRole;        // DEPRECATED: kept for backward compatibility
+  capabilities: UserCapabilities;
+  isAdmin: boolean;
   phone: string;
   avatar?: string;
   verified?: boolean;
   status?: "Active" | "Pending" | "Suspended";
   joined?: string;
-  subscriptionPlanId?: string;
+  subscription?: UserSubscription;
+  subscriptionHistory?: SubscriptionHistoryItem[];
   walletBalance?: number;
 }
 
@@ -26,11 +37,45 @@ export interface VendorProfile {
 }
 
 export interface SubscriptionPlan {
-  id: string;
+  _id?: string;
+  planId: string;
   name: string;
+  description: string;
   price: number;
+  durationType: 'monthly' | 'quarterly' | 'yearly';
+  durationDays: number;
+  capabilities: {
+    canSell: boolean;
+    canDeliver: boolean;
+  };
   features: string[];
-  listingsLimit: number; // -1 means unlimited
+  limits: {
+    listings: number; // -1 means unlimited
+    deliveries: number;
+  };
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserSubscription {
+  plan: string; // planId
+  status: 'active' | 'pending' | 'expired' | 'cancelled' | 'suspended';
+  startDate?: Date | string;
+  endDate?: Date | string;
+  paymentMethod?: 'wallet' | 'mpesa' | null;
+  autoRenew: boolean;
+}
+
+export interface SubscriptionHistoryItem {
+  plan: string;
+  status: 'active' | 'expired' | 'cancelled';
+  startDate: Date | string;
+  endDate: Date | string;
+  paymentMethod?: 'wallet' | 'mpesa';
+  amount?: number;
+  mpesaReceiptNumber?: string;
+  createdAt?: Date | string;
 }
 
 export interface Listing {
@@ -45,10 +90,13 @@ export interface Listing {
   category: string;
   pickupStart: string;
   pickupEnd: string;
+  pickupWindowStart?: string;
+  pickupWindowEnd?: string;
   expiryDateTime: string;
   deliveryAllowed: boolean;
   location: { lat: number; lng: number; address: string };
-  status: "Available" | "Reserved" | "Sold" | "Expired" | "Cancelled";
+  
+  status: "available" | "partially_claimed" | "fully_claimed" | "expired" | "cancelled";
   ownerType: "VendorOwned" | "PlatformOwned";
   vendorId: string;
   vendorName: string;
@@ -68,7 +116,7 @@ export interface Order {
   basePrice: number;
   logisticsFee: number;
   totalPrice: number;
-  status: "Pending" | "Confirmed" | "Cancelled" | "Completed" | "Expired";
+  status: "CLAIMED" | "LOGISTICS_ASSIGNED" | "IN_TRANSIT" | "DELIVERED" | "COMPLETED" | "CANCELLED";
   createdAt: string;
 }
 

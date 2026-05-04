@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DataProvider } from "@/contexts/DataContext";
 import { CartProvider } from "@/contexts/CartContext";
@@ -11,40 +11,91 @@ import { Loader2 } from "lucide-react";
 
 // Auth
 import AuthPage from "./pages/AuthPage";
+import AdminLoginPage from "./pages/AdminLoginPage";
 
-// Recipient pages
-import { RecipientLayout } from "./layouts/RecipientLayout";
-import RecipientHome from "./pages/recipient/RecipientHome";
+// Unified Layout
+import { DashboardLayout } from "./layouts/DashboardLayout";
+import AdminLayout from "./layouts/AdminLayout";
+
+// Dashboard Pages
+import BrowseListings from "./pages/dashboard/BrowseListings";
 import ListingDetails from "./pages/recipient/ListingDetails";
-import RecipientOrders from "./pages/recipient/RecipientOrders";
-import RecipientMap from "./pages/recipient/RecipientMap";
-import RecipientProfile from "./pages/recipient/RecipientProfile";
+import MyOrders from "./pages/dashboard/MyOrders";
+import MapView from "./pages/dashboard/MapView";
 import WalletPage from "./pages/WalletPage";
+import ProfilePage from "./pages/dashboard/ProfilePage";
 
-// Vendor pages
-import { VendorLayout } from "./layouts/SidebarLayout";
-import VendorDashboard from "./pages/vendor/VendorDashboard";
-import VendorListings from "./pages/vendor/VendorListings";
+// Sell Pages (require canSell capability)
+import SellOverview from "./pages/dashboard/sell/SellOverview";
+import MyListings from "./pages/vendor/VendorListings";
 import CreateListing from "./pages/vendor/CreateListing";
-import VendorOrders from "./pages/vendor/VendorOrders";
-import VendorSubscription from "./pages/vendor/VendorSubscription";
-import VendorReports from "./pages/vendor/VendorReports";
+import SalesOrders from "./pages/vendor/VendorOrders";
+import SalesReports from "./pages/vendor/VendorReports";
 
-// Logistics pages
-import { LogisticsLayout } from "./layouts/LogisticsLayout";
-import LogisticsDispatches from "./pages/logistics/LogisticsDispatches";
-import LogisticsMap from "./pages/logistics/LogisticsMap";
-import LogisticsCompleted from "./pages/logistics/LogisticsCompleted";
+// Deliver Pages (require canDeliver capability)
+import DeliverOverview from "./pages/dashboard/deliver/DeliverOverview";
+import ActiveDispatches from "./pages/logistics/LogisticsDispatches";
+import RouteMap from "./pages/logistics/LogisticsMap";
+import CompletedDeliveries from "./pages/logistics/LogisticsCompleted";
 
-// Admin pages
-import { AdminLayout } from "./layouts/SidebarLayout";
-import AdminDashboard from "./pages/admin/AdminDashboard";
+// Admin Pages (require isAdmin)
+import AdminOverview from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminListings from "./pages/admin/AdminListings";
 import AdminReports from "./pages/admin/AdminReports";
 
+// Subscription
+import SubscriptionPage from "./pages/dashboard/SubscriptionPage";
+
 import NotFound from "./pages/NotFound";
+
+// Capability Guard Component
+function CapabilityGuard({
+  children,
+  capability,
+}: {
+  children: React.ReactNode;
+  capability: "canSell" | "canDeliver";
+}) {
+  const { hasCapability } = useAuth();
+
+  if (!hasCapability(capability)) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+        <h2 className="text-2xl font-bold mb-4">Subscription Required</h2>
+        <p className="text-muted-foreground mb-6">
+          {capability === "canSell"
+            ? "You need a Vendor or Business subscription to access this feature."
+            : "You need a Logistics or Business subscription to access this feature."}
+        </p>
+        <Navigate to="/dashboard/subscription" replace />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+// Admin Guard Component
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { isAdmin } = useAuth();
+
+  if (!isAdmin) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// Unauthenticated redirect: admin paths → /admin/login, everything else → /auth
+function UnauthenticatedRedirect() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/admin")) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  return <Navigate to="/auth" replace />;
+}
 
 const queryClient = new QueryClient();
 
@@ -57,7 +108,8 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
-        <Route path="*" element={<Navigate to="/auth" replace />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="*" element={<UnauthenticatedRedirect />} />
       </Routes>
     );
   }
@@ -75,7 +127,8 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/auth" element={<AuthPage />} />
-        <Route path="*" element={<Navigate to="/auth" replace />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="*" element={<UnauthenticatedRedirect />} />
       </Routes>
     );
   }
@@ -83,40 +136,163 @@ function AppRoutes() {
   return (
     <AutoLogout>
       <Routes>
-      {/* Recipient routes */}
-      <Route path="/" element={<RecipientLayout><RecipientHome /></RecipientLayout>} />
-      <Route path="/listing/:id" element={<RecipientLayout><ListingDetails /></RecipientLayout>} />
-      <Route path="/orders" element={<RecipientLayout><RecipientOrders /></RecipientLayout>} />
-      <Route path="/map" element={<RecipientLayout><RecipientMap /></RecipientLayout>} />
-      <Route path="/profile" element={<RecipientLayout><RecipientProfile /></RecipientLayout>} />
-      <Route path="/wallet" element={<RecipientLayout><WalletPage /></RecipientLayout>} />
+        {/* Legacy redirects - redirect old role routes to new unified dashboard */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/listing/:id" element={<Navigate to="/dashboard/listings" replace />} />
+        <Route path="/orders" element={<Navigate to="/dashboard/orders" replace />} />
+        <Route path="/map" element={<Navigate to="/dashboard/map" replace />} />
+        <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
+        <Route path="/wallet" element={<Navigate to="/dashboard/wallet" replace />} />
 
-      {/* Vendor routes */}
-      <Route path="/vendor" element={<VendorLayout><VendorDashboard /></VendorLayout>} />
-      <Route path="/vendor/listings" element={<VendorLayout><VendorListings /></VendorLayout>} />
-      <Route path="/vendor/create" element={<VendorLayout><CreateListing /></VendorLayout>} />
-      <Route path="/vendor/orders" element={<VendorLayout><VendorOrders /></VendorLayout>} />
-      <Route path="/vendor/subscription" element={<VendorLayout><VendorSubscription /></VendorLayout>} />
-      <Route path="/vendor/reports" element={<VendorLayout><VendorReports /></VendorLayout>} />
-      <Route path="/vendor/wallet" element={<VendorLayout><WalletPage /></VendorLayout>} />
+        {/* Vendor legacy redirects */}
+        <Route path="/vendor" element={<Navigate to="/dashboard/sell" replace />} />
+        <Route path="/vendor/listings" element={<Navigate to="/dashboard/sell/listings" replace />} />
+        <Route path="/vendor/create" element={<Navigate to="/dashboard/sell/create" replace />} />
+        <Route path="/vendor/orders" element={<Navigate to="/dashboard/sell/orders" replace />} />
+        <Route path="/vendor/subscription" element={<Navigate to="/dashboard/subscription" replace />} />
+        <Route path="/vendor/reports" element={<Navigate to="/dashboard/sell/reports" replace />} />
+        <Route path="/vendor/map" element={<Navigate to="/dashboard/map" replace />} />
+        <Route path="/vendor/wallet" element={<Navigate to="/dashboard/wallet" replace />} />
 
-      {/* Logistics routes */}
-      <Route path="/logistics" element={<LogisticsLayout><LogisticsDispatches /></LogisticsLayout>} />
-      <Route path="/logistics/map" element={<LogisticsLayout><LogisticsMap /></LogisticsLayout>} />
-      <Route path="/logistics/completed" element={<LogisticsLayout><LogisticsCompleted /></LogisticsLayout>} />
-      <Route path="/logistics/wallet" element={<LogisticsLayout><WalletPage /></LogisticsLayout>} />
+        {/* Logistics legacy redirects */}
+        <Route path="/logistics" element={<Navigate to="/dashboard/deliver" replace />} />
+        <Route path="/logistics/map" element={<Navigate to="/dashboard/deliver/map" replace />} />
+        <Route path="/logistics/completed" element={<Navigate to="/dashboard/deliver/completed" replace />} />
+        <Route path="/logistics/wallet" element={<Navigate to="/dashboard/wallet" replace />} />
 
-      {/* Admin routes */}
-      <Route path="/admin" element={<AdminLayout><AdminDashboard /></AdminLayout>} />
-      <Route path="/admin/users" element={<AdminLayout><AdminUsers /></AdminLayout>} />
-      <Route path="/admin/subscriptions" element={<AdminLayout><AdminSubscriptions /></AdminLayout>} />
-      <Route path="/admin/listings" element={<AdminLayout><AdminListings /></AdminLayout>} />
-      <Route path="/admin/reports" element={<AdminLayout><AdminReports /></AdminLayout>} />
+        {/* Admin legacy redirects - old dashboard paths redirect to new /admin paths */}
+        <Route path="/dashboard/admin" element={<Navigate to="/admin" replace />} />
+        <Route path="/dashboard/admin/users" element={<Navigate to="/admin/users" replace />} />
+        <Route path="/dashboard/admin/subscriptions" element={<Navigate to="/admin/subscriptions" replace />} />
+        <Route path="/dashboard/admin/listings" element={<Navigate to="/admin/listings" replace />} />
+        <Route path="/dashboard/admin/reports" element={<Navigate to="/admin/reports" replace />} />
 
-      {/* Auth */}
-      <Route path="/auth" element={<Navigate to="/" replace />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        {/* Unified Dashboard Routes */}
+        <Route path="/dashboard" element={<Navigate to="/dashboard/listings" replace />} />
+        <Route path="/dashboard/listings" element={<DashboardLayout><BrowseListings /></DashboardLayout>} />
+        <Route path="/dashboard/listings/:id" element={<DashboardLayout><ListingDetails /></DashboardLayout>} />
+        <Route path="/dashboard/orders" element={<DashboardLayout><MyOrders /></DashboardLayout>} />
+        <Route path="/dashboard/map" element={<DashboardLayout><MapView /></DashboardLayout>} />
+        <Route path="/dashboard/wallet" element={<DashboardLayout><WalletPage /></DashboardLayout>} />
+        <Route path="/dashboard/profile" element={<DashboardLayout><ProfilePage /></DashboardLayout>} />
+        <Route path="/dashboard/subscription" element={<DashboardLayout><SubscriptionPage /></DashboardLayout>} />
+
+        {/* Sell Routes - Protected by canSell capability */}
+        <Route
+          path="/dashboard/sell"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <SellOverview />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/sell/listings"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <MyListings />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/sell/create"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <CreateListing />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/sell/orders"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <SalesOrders />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/sell/reports"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <SalesReports />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+
+        {/* Deliver Routes - Protected by canDeliver capability */}
+        <Route
+          path="/dashboard/deliver"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canDeliver">
+                <DeliverOverview />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/deliver/active"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canDeliver">
+                <ActiveDispatches />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/deliver/map"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canDeliver">
+                <RouteMap />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/deliver/completed"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canDeliver">
+                <CompletedDeliveries />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+
+        {/* Admin Routes - Protected by isAdmin, wrapped in AdminLayout */}
+        <Route
+          path="/admin"
+          element={
+            <AdminGuard>
+              <AdminLayout />
+            </AdminGuard>
+          }
+        >
+          <Route index element={<AdminOverview />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="subscriptions" element={<AdminSubscriptions />} />
+          <Route path="listings" element={<AdminListings />} />
+          <Route path="reports" element={<AdminReports />} />
+          <Route path="settings" element={<div className="p-6 text-center text-muted-foreground">Settings page coming soon</div>} />
+        </Route>
+
+        {/* Auth */}
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
     </AutoLogout>
   );
 }
@@ -128,11 +304,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <CartProvider>
-            <DataProvider>
+          <DataProvider>
+            <CartProvider>
               <AppRoutes />
-            </DataProvider>
-          </CartProvider>
+            </CartProvider>
+          </DataProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

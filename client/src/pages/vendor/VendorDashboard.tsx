@@ -14,7 +14,7 @@ export default function VendorDashboard() {
   const vendorOrders = orders.filter((o) => o.vendorId === vendorId);
 
   const stats = [
-    { label: "Active Listings", value: vendorListings.filter((l) => l.status === "Available").length, icon: Package, color: "text-primary" },
+    { label: "Active Listings", value: vendorListings.filter((l) => l.status === "available" || l.status === "partially_claimed").length, icon: Package, color: "text-primary" },
     { label: "Total Orders", value: vendorOrders.length, icon: ShoppingBag, color: "text-secondary" },
     { label: "Fulfillment Rate", value: "85%", icon: TrendingUp, color: "text-success" },
     { label: "Expiring Soon", value: 1, icon: AlertTriangle, color: "text-warning" },
@@ -84,3 +84,4 @@ export default function VendorDashboard() {
     </div>
   );
 }
+

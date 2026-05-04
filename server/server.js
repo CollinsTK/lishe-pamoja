@@ -1,5 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const dns = require('dns');
 require('dotenv').config();
 
 const app = express();
@@ -22,10 +23,12 @@ app.use((req, res, next) => {
 const userRoutes = require('./routes/userRoutes');
 const listingRoutes = require('./routes/listingRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
+const subscriptionPlanRoutes = require('./routes/subscriptionPlanRoutes');
 
 app.use('/api/users', userRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/subscription-plans', subscriptionPlanRoutes);
 
 // A simple base route to verify the API is running
 app.get('/', (req, res) => {
@@ -44,6 +47,8 @@ if (!process.env.JWT_SECRET) {
   console.error('❌ JWT_SECRET is not set. Create a server/.env file with a secure JWT secret.');
   process.exit(1);
 }
+
+dns.setServers((process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1').split(','));
 
 // Connect to MongoDB before starting the server
 mongoose.connect(MONGO_URI)
