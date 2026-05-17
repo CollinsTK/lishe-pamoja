@@ -1,150 +1,570 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
+import { Button } from "@/components/ui/button";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend, AreaChart, Area,
+} from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
-import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Printer, Package, ShoppingBag, TrendingUp, BarChart3 } from "lucide-react";
 import Papa from "papaparse";
-import { format } from "date-fns";
 
-const COLORS = ["hsl(145, 55%, 32%)", "hsl(32, 90%, 55%)", "hsl(38, 92%, 50%)", "hsl(200, 60%, 50%)", "hsl(160, 10%, 45%)"];
+const COLORS = ["#22c55e","#f59e0b","#3b82f6","#ef4444","#8b5cf6","#06b6d4"];
+const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const today = new Date().toLocaleDateString("en-KE", { day: "numeric", month: "long", year: "numeric" });
+const fmt = (n: number) => `KES ${Math.round(n).toLocaleString()}`;
+const pct = (a: number, b: number) => b === 0 ? "—" : `${Math.round((a / b) * 100)}%`;
+
+function csvDownload(data: any[], filename: string) {
+  const csv = Papa.unparse(data);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.setAttribute("download", filename);
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+type Tab = "overview" | "listings" | "orders" | "revenue";
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: "overview", label: "Overview",  icon: BarChart3   },
+  { id: "listings", label: "Listings",  icon: Package     },
+  { id: "orders",   label: "Orders",    icon: ShoppingBag },
+  { id: "revenue",  label: "Revenue",   icon: TrendingUp  },
+];
+
+function StatRow({ label, value, highlight }: { label: string; value: any; highlight?: boolean }) {
+  return (
+    <div className={`flex justify-between items-center py-2 border-b border-border/40 last:border-0 text-sm ${highlight ? "font-bold" : ""}`}>
+      <span className="text-muted-foreground">{label}</span>
+      <span className={highlight ? "text-primary" : "font-semibold"}>{value}</span>
+    </div>
+  );
+}
 
 export default function VendorReports() {
   const { user } = useAuth();
-  const { listings, orders, users, dispatches } = useData();
+  const { listings, orders } = useData();
+  const [tab, setTab] = useState<Tab>("overview");
   const vendorId = user?.id ?? "";
+  const now = new Date();
 
   const vendorListings = listings.filter(l => l.vendorId === vendorId);
-  const vendorOrders = orders.filter(o => o.vendorId === vendorId);
+  const vendorOrders   = orders.filter(o => o.vendorId === vendorId);
 
-  // Calculate real metrics
-  const completedOrders = vendorOrders.filter(o => o.status === "Completed" || o.status === "Confirmed").length;
-  const totalOrders = vendorOrders.length;
-  const fulfillmentRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
-  const expiredListings = vendorListings.filter(l => l.status === "expired").length;
-  const expiryRate = vendorListings.length > 0 ? Math.round((expiredListings / vendorListings.length) * 100) : 0;
-  const avgClaimsPerDay = totalOrders > 0 ? (totalOrders / 30).toFixed(1) : "0";
+  // ── Listing metrics ──
+  const availableListings  = vendorListings.filter(l => l.status === "available");
+  const partialListings    = vendorListings.filter(l => l.status === "partially_claimed");
+  const claimedListings    = vendorListings.filter(l => l.status === "fully_claimed");
+  const expiredListings    = vendorListings.filter(l => l.status === "expired");
+  const freeListings       = vendorListings.filter(l => l.isFree);
+  const deliveryListings   = vendorListings.filter(l => l.deliveryAllowed);
+  const totalQty           = vendorListings.reduce((s, l) => s + (l.quantity || 0), 0);
 
-  // Category distribution
-  const categoryCounts = vendorListings.reduce((acc, l) => {
-    acc[l.category] = (acc[l.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  const categoryData = Object.entries(categoryCounts).map(([name, value]) => ({ name, value }));
+  // ── Order metrics ──
+  const completedOrders  = vendorOrders.filter(o => o.status === "DELIVERED" || o.status === "COMPLETED" || o.status === "Completed");
+  const pendingOrders    = vendorOrders.filter(o => o.status === "CLAIMED" || o.status === "Pending" || o.status === "AWAITING_RIDER");
+  const cancelledOrders  = vendorOrders.filter(o => o.status === "CANCELLED");
+  const deliveryOrders   = vendorOrders.filter(o => o.fulfillmentMode === "Delivery");
+  const pickupOrders     = vendorOrders.filter(o => o.fulfillmentMode === "Pickup");
+  const claimOrders      = vendorOrders.filter(o => o.orderType === "Claim");
+  const purchaseOrders   = vendorOrders.filter(o => o.orderType === "Purchase");
 
-  // Monthly performance (simulated from real data)
-  const monthlyData = [
-    { month: "Jan", listed: Math.max(1, Math.round(vendorListings.length * 0.15)), sold: Math.max(1, Math.round(totalOrders * 0.2)), expired: Math.max(0, Math.round(expiredListings * 0.2)), revenue: Math.max(500, Math.round(totalOrders * 120)) },
-    { month: "Feb", listed: Math.max(1, Math.round(vendorListings.length * 0.2)), sold: Math.max(1, Math.round(totalOrders * 0.25)), expired: Math.max(0, Math.round(expiredListings * 0.3)), revenue: Math.max(800, Math.round(totalOrders * 150)) },
-    { month: "Mar", listed: Math.max(1, Math.round(vendorListings.length * 0.25)), sold: Math.max(1, Math.round(totalOrders * 0.3)), expired: Math.max(0, Math.round(expiredListings * 0.4)), revenue: Math.max(1200, Math.round(totalOrders * 200)) },
-    { month: "Apr", listed: vendorListings.length, sold: totalOrders, expired: expiredListings, revenue: vendorOrders.reduce((s, o) => s + o.totalPrice, 0) },
-  ];
+  // ── Revenue ──
+  const totalRevenue     = vendorOrders.reduce((s, o) => s + (o.totalPrice || 0), 0);
+  const productRevenue   = vendorOrders.reduce((s, o) => s + (o.basePrice || 0), 0);
+  const deliveryRevenue  = vendorOrders.reduce((s, o) => s + (o.logisticsFee || 0), 0);
+  const vendorNet        = Math.round(productRevenue * 0.9);
+  const platformFee      = Math.round(productRevenue * 0.1);
+  const avgOrderValue    = purchaseOrders.length ? totalRevenue / purchaseOrders.length : 0;
 
-  const handleDownloadCSV = () => {
-    if (vendorOrders.length === 0) return;
-    
-    const csvData = vendorOrders.map(order => {
-      const buyerName = users.find(u => u.id === order.recipientId)?.name || "Unknown Buyer";
-      const dispatch = dispatches.find(d => d.orderId === order.id);
-      const logisticsName = dispatch?.logisticsPartnerId ? users.find(u => u.id === dispatch.logisticsPartnerId)?.name || "Unknown Logistics" : "N/A";
-
-      return {
-        "Order ID": order.id,
-        "Date": format(new Date(order.createdAt), 'yyyy-MM-dd HH:mm'),
-        "Listing Title": order.listingTitle,
-        "Quantity": `${order.orderedQuantity} ${order.unit}`,
-        "Buyer": buyerName,
-        "Logistics": logisticsName,
-        "Type": order.orderType,
-        "Status": order.status,
-        "Total Price (KES)": order.totalPrice
-      };
-    });
-    
-    const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `sales_report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // ── Monthly buckets ──
+  const makeMonthly = <T extends Record<string, number>>(init: T) => {
+    const buckets: Record<string, T & { month: string }> = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets[`${d.getFullYear()}-${d.getMonth()}`] = { ...init, month: MONTH_LABELS[d.getMonth()] } as T & { month: string };
+    }
+    return buckets;
   };
 
+  const orderBuckets = makeMonthly({ orders: 0, revenue: 0, deliveries: 0 });
+  vendorOrders.forEach(o => {
+    if (!o.createdAt) return;
+    const d = new Date(o.createdAt);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (orderBuckets[key]) {
+      orderBuckets[key].orders++;
+      orderBuckets[key].revenue += o.totalPrice || 0;
+      if (o.fulfillmentMode === "Delivery") orderBuckets[key].deliveries++;
+    }
+  });
+  const monthlyOrders = Object.values(orderBuckets);
+
+  const listingBuckets = makeMonthly({ listed: 0, expired: 0 });
+  vendorListings.forEach(l => {
+    if (!l.createdAt) return;
+    const d = new Date(l.createdAt);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    if (listingBuckets[key]) {
+      listingBuckets[key].listed++;
+      if (l.status === "expired") listingBuckets[key].expired++;
+    }
+  });
+  const monthlyListings = Object.values(listingBuckets);
+
+  // ── Category breakdown ──
+  const categoryBreakdown = Object.entries(
+    vendorListings.reduce((acc: Record<string, number>, l) => {
+      const c = l.category || "Uncategorised";
+      acc[c] = (acc[c] || 0) + 1; return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+  // ── Status pie ──
+  const listingStatusPie = [
+    { name: "Available",     value: availableListings.length, fill: "#22c55e" },
+    { name: "Partial",       value: partialListings.length,   fill: "#f59e0b" },
+    { name: "Fully Claimed", value: claimedListings.length,   fill: "#3b82f6" },
+    { name: "Expired",       value: expiredListings.length,   fill: "#ef4444" },
+  ].filter(d => d.value > 0);
+
+  const fulfillmentPie = [
+    { name: "Completed", value: completedOrders.length, fill: "#22c55e" },
+    { name: "Pending",   value: pendingOrders.length,   fill: "#f59e0b" },
+    { name: "Cancelled", value: cancelledOrders.length, fill: "#ef4444" },
+  ].filter(d => d.value > 0);
+
+  // ── CSV exports ──
+  const exportOrders = () => csvDownload(
+    vendorOrders.map(o => ({
+      "Order ID": o.id,
+      Date: o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-KE") : "",
+      Listing: o.listingTitle, Qty: `${o.orderedQuantity} ${o.unit}`,
+      Type: o.orderType, Mode: o.fulfillmentMode, Status: o.status,
+      "Base (KES)": o.basePrice, "Delivery (KES)": o.logisticsFee, "Total (KES)": o.totalPrice,
+    })),
+    `vendor_orders_${now.toISOString().split("T")[0]}.csv`
+  );
+
+  const exportListings = () => csvDownload(
+    vendorListings.map(l => ({
+      Title: l.title, Category: l.category, Status: l.status,
+      Free: l.isFree ? "Yes" : "No", "Price (KES)": l.price,
+      "Available Qty": l.quantity, Unit: l.unit,
+      "Delivery Allowed": l.deliveryAllowed ? "Yes" : "No",
+      Expiry: l.expiryDateTime ? new Date(l.expiryDateTime).toLocaleDateString("en-KE") : "",
+    })),
+    `vendor_listings_${now.toISOString().split("T")[0]}.csv`
+  );
+
+  const EmptyChart = () => (
+    <div className="flex items-center justify-center h-44 text-sm text-muted-foreground">No data yet</div>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading font-bold text-2xl">Reports</h1>
-        <Button onClick={handleDownloadCSV} variant="outline" className="gap-2" disabled={vendorOrders.length === 0}>
-          <Download size={16} /> Download CSV
-        </Button>
+    <div className="space-y-5">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #vendor-report-area, #vendor-report-area * { visibility: visible; }
+          #vendor-report-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="flex flex-wrap gap-2 items-start justify-between no-print">
+        <div>
+          <h1 className="font-heading font-bold text-2xl">Sales Reports</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Generated on {today} · {user?.name}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => window.print()} variant="outline" size="sm" className="gap-1.5">
+            <Printer className="w-3.5 h-3.5" /> Print
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Fulfillment Rate</p>
-          <p className="font-heading font-bold text-2xl text-success">{fulfillmentRate}%</p>
-        </Card>
-        <Card className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Expiry Rate</p>
-          <p className="font-heading font-bold text-2xl text-warning">{expiryRate}%</p>
-        </Card>
-        <Card className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Avg. Orders/Day</p>
-          <p className="font-heading font-bold text-2xl text-primary">{avgClaimsPerDay}</p>
-        </Card>
-        <Card className="p-4 text-center">
-          <p className="text-xs text-muted-foreground">Total Revenue</p>
-          <p className="font-heading font-bold text-2xl">KES {vendorOrders.reduce((s, o) => s + o.totalPrice, 0).toLocaleString()}</p>
-        </Card>
+      {/* Tab nav */}
+      <div className="flex flex-wrap gap-1.5 no-print">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors ${
+                tab === t.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+              }`}>
+              <Icon className="w-3.5 h-3.5" /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-5">
-          <h3 className="font-heading font-semibold mb-4">Revenue Trends (KES)</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(40, 15%, 88%)" />
-              <XAxis dataKey="month" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip formatter={(value) => [`KES ${value}`, "Revenue"]} />
-              <Line type="monotone" dataKey="revenue" stroke="hsl(145, 55%, 32%)" strokeWidth={3} activeDot={{ r: 8 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
+      <div id="vendor-report-area">
+        {/* Print header */}
+        <div className="hidden print:block mb-6 border-b pb-3">
+          <h1 className="font-bold text-xl">Lishe Pamoja — Vendor {TABS.find(t => t.id === tab)?.label} Report</h1>
+          <p className="text-sm text-muted-foreground">{user?.name} · {today}</p>
+        </div>
 
-        <Card className="p-5">
-          <h3 className="font-heading font-semibold mb-4">Monthly Activity</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(40, 15%, 88%)" />
-              <XAxis dataKey="month" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip />
-              <Bar dataKey="listed" fill="hsl(145, 55%, 32%)" radius={[4, 4, 0, 0]} name="Listed" />
-              <Bar dataKey="sold" fill="hsl(32, 90%, 55%)" radius={[4, 4, 0, 0]} name="Sold" />
-              <Bar dataKey="expired" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} name="Expired" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
+        {/* ── OVERVIEW ── */}
+        {tab === "overview" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total Listings",    value: vendorListings.length,      color: "text-blue-700" },
+                { label: "Total Orders",      value: vendorOrders.length,        color: "text-purple-700" },
+                { label: "Total Revenue",     value: fmt(totalRevenue),          color: "text-emerald-700" },
+                { label: "Fulfilment Rate",   value: pct(completedOrders.length, vendorOrders.length), color: "text-green-700" },
+              ].map(k => (
+                <Card key={k.label} className="p-4 text-center">
+                  <p className={`font-heading font-bold text-xl ${k.color}`}>{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
+                </Card>
+              ))}
+            </div>
 
-      <Card className="p-5">
-        <h3 className="font-heading font-semibold mb-4">Category Distribution</h3>
-        {categoryData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        ) : (
-          <p className="text-center text-muted-foreground py-10">No listing data available yet</p>
+            <Card className="p-5">
+              <h3 className="font-heading font-semibold text-sm mb-3">Monthly Orders & Revenue (last 6 months)</h3>
+              {monthlyOrders.every(m => m.orders === 0) ? <EmptyChart /> : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={monthlyOrders}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" fontSize={11} />
+                    <YAxis yAxisId="left" fontSize={11} />
+                    <YAxis yAxisId="right" orientation="right" fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar yAxisId="left" dataKey="orders" fill="#3b82f6" radius={[4,4,0,0]} name="Orders" />
+                    <Bar yAxisId="right" dataKey="revenue" fill="#22c55e" radius={[4,4,0,0]} name="Revenue (KES)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Listing Summary</h3>
+                <StatRow label="Total Listings" value={vendorListings.length} highlight />
+                <StatRow label="Available" value={availableListings.length} />
+                <StatRow label="Fully Claimed" value={claimedListings.length} />
+                <StatRow label="Expired" value={expiredListings.length} />
+                <StatRow label="Free Listings" value={freeListings.length} />
+              </Card>
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Order Summary</h3>
+                <StatRow label="Total Orders" value={vendorOrders.length} highlight />
+                <StatRow label="Completed" value={completedOrders.length} />
+                <StatRow label="Pending" value={pendingOrders.length} />
+                <StatRow label="Cancelled" value={cancelledOrders.length} />
+                <StatRow label="Fulfilment Rate" value={pct(completedOrders.length, vendorOrders.length)} highlight />
+              </Card>
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Revenue Summary</h3>
+                <StatRow label="Total Revenue" value={fmt(totalRevenue)} highlight />
+                <StatRow label="Your Net (90%)" value={fmt(vendorNet)} />
+                <StatRow label="Platform Fee (10%)" value={fmt(platformFee)} />
+                <StatRow label="Avg Order Value" value={fmt(avgOrderValue)} />
+              </Card>
+            </div>
+          </div>
         )}
-      </Card>
+
+        {/* ── LISTINGS ── */}
+        {tab === "listings" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total",        value: vendorListings.length,      color: "text-blue-700" },
+                { label: "Available",    value: availableListings.length,   color: "text-green-700" },
+                { label: "Expired",      value: expiredListings.length,     color: "text-red-600" },
+                { label: "Free",         value: freeListings.length,        color: "text-amber-700" },
+              ].map(k => (
+                <Card key={k.label} className="p-4 text-center">
+                  <p className={`font-heading font-bold text-2xl ${k.color}`}>{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
+                </Card>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="p-5">
+                <h3 className="font-heading font-semibold text-sm mb-3">Listing Status</h3>
+                {listingStatusPie.length === 0 ? <EmptyChart /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={listingStatusPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                        label={({ name, percent }) => `${(percent*100).toFixed(0)}%`} labelLine={false}>
+                        {listingStatusPie.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                      </Pie>
+                      <Tooltip /><Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+              <Card className="p-5">
+                <h3 className="font-heading font-semibold text-sm mb-3">Listings by Category</h3>
+                {categoryBreakdown.length === 0 ? <EmptyChart /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={categoryBreakdown} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" fontSize={11} />
+                      <YAxis dataKey="name" type="category" fontSize={10} width={110} />
+                      <Tooltip />
+                      <Bar dataKey="value" radius={[0,4,4,0]} name="Listings">
+                        {categoryBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+            </div>
+
+            <Card className="p-5">
+              <h3 className="font-heading font-semibold text-sm mb-3">Monthly Listings Activity (last 6 months)</h3>
+              {monthlyListings.every(m => m.listed === 0) ? <EmptyChart /> : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={monthlyListings}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" fontSize={11} />
+                    <YAxis fontSize={11} />
+                    <Tooltip /><Legend />
+                    <Bar dataKey="listed" fill="#22c55e" radius={[4,4,0,0]} name="Listed" />
+                    <Bar dataKey="expired" fill="#ef4444" radius={[4,4,0,0]} name="Expired" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Listings table */}
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-sm">All My Listings</h3>
+                <Button onClick={exportListings} variant="outline" size="sm" className="gap-1 text-xs no-print">
+                  <Download className="w-3 h-3" /> CSV
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>{["Title","Category","Status","Price","Qty","Delivery","Expiry"].map(h => (
+                      <th key={h} className="text-left p-2.5 font-semibold text-muted-foreground">{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {vendorListings.length === 0 ? (
+                      <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No listings yet</td></tr>
+                    ) : vendorListings.map(l => (
+                      <tr key={l.id} className="border-t hover:bg-muted/20">
+                        <td className="p-2.5 font-medium max-w-[140px] truncate">{l.title}</td>
+                        <td className="p-2.5 text-muted-foreground">{l.category}</td>
+                        <td className="p-2.5">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.status === "available" ? "bg-green-100 text-green-700" : l.status === "expired" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            {l.status}
+                          </span>
+                        </td>
+                        <td className="p-2.5">{l.isFree ? <span className="text-green-600 font-semibold">Free</span> : `KES ${l.price}`}</td>
+                        <td className="p-2.5">{l.quantity} {l.unit}</td>
+                        <td className="p-2.5">{l.deliveryAllowed ? "✓" : "—"}</td>
+                        <td className="p-2.5 text-muted-foreground">{l.expiryDateTime ? new Date(l.expiryDateTime).toLocaleDateString("en-KE") : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── ORDERS ── */}
+        {tab === "orders" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total Orders",    value: vendorOrders.length,         color: "text-blue-700" },
+                { label: "Completed",       value: completedOrders.length,      color: "text-green-700" },
+                { label: "Pending",         value: pendingOrders.length,        color: "text-amber-700" },
+                { label: "Cancelled",       value: cancelledOrders.length,      color: "text-red-600" },
+              ].map(k => (
+                <Card key={k.label} className="p-4 text-center">
+                  <p className={`font-heading font-bold text-2xl ${k.color}`}>{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
+                </Card>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="p-5">
+                <h3 className="font-heading font-semibold text-sm mb-3">Order Status</h3>
+                {fulfillmentPie.length === 0 ? <EmptyChart /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={fulfillmentPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                        label={({ name, percent }) => `${(percent*100).toFixed(0)}%`} labelLine={false}>
+                        {fulfillmentPie.map((e, i) => <Cell key={i} fill={e.fill} />)}
+                      </Pie>
+                      <Tooltip /><Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+              <Card className="p-5">
+                <h3 className="font-heading font-semibold text-sm mb-3">Delivery vs Pickup</h3>
+                {(deliveryOrders.length + pickupOrders.length) === 0 ? <EmptyChart /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie data={[
+                        { name: "Delivery", value: deliveryOrders.length, fill: "#3b82f6" },
+                        { name: "Pickup",   value: pickupOrders.length,   fill: "#22c55e" },
+                      ]} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}
+                        label={({ name, percent }) => `${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                        <Cell fill="#3b82f6" /><Cell fill="#22c55e" />
+                      </Pie>
+                      <Tooltip /><Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Order Breakdown</h3>
+                <StatRow label="Total Orders" value={vendorOrders.length} highlight />
+                <StatRow label="Purchase Orders" value={purchaseOrders.length} />
+                <StatRow label="Free Claims" value={claimOrders.length} />
+                <StatRow label="Delivery Orders" value={deliveryOrders.length} />
+                <StatRow label="Pickup Orders" value={pickupOrders.length} />
+                <StatRow label="Completed" value={completedOrders.length} highlight />
+                <StatRow label="Fulfilment Rate" value={pct(completedOrders.length, vendorOrders.length)} highlight />
+              </Card>
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Monthly Orders</h3>
+                {monthlyOrders.every(m => m.orders === 0) ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">No order data yet</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <BarChart data={monthlyOrders}>
+                      <XAxis dataKey="month" fontSize={10} />
+                      <YAxis fontSize={10} />
+                      <Tooltip />
+                      <Bar dataKey="orders" fill="#3b82f6" radius={[3,3,0,0]} name="Orders" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+            </div>
+
+            {/* Orders table */}
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 border-b flex items-center justify-between">
+                <h3 className="font-semibold text-sm">All Orders</h3>
+                <Button onClick={exportOrders} variant="outline" size="sm" className="gap-1 text-xs no-print">
+                  <Download className="w-3 h-3" /> CSV
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>{["Listing","Type","Mode","Status","Base (KES)","Delivery (KES)","Total (KES)","Date"].map(h => (
+                      <th key={h} className="text-left p-2.5 font-semibold text-muted-foreground">{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {vendorOrders.length === 0 ? (
+                      <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No orders yet</td></tr>
+                    ) : vendorOrders.slice(0, 50).map(o => (
+                      <tr key={o.id} className="border-t hover:bg-muted/20">
+                        <td className="p-2.5 font-medium max-w-[140px] truncate">{o.listingTitle}</td>
+                        <td className="p-2.5 text-muted-foreground">{o.orderType}</td>
+                        <td className="p-2.5 text-muted-foreground">{o.fulfillmentMode}</td>
+                        <td className="p-2.5">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${o.status === "DELIVERED" || o.status === "Completed" ? "bg-green-100 text-green-700" : o.status === "CANCELLED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            {o.status}
+                          </span>
+                        </td>
+                        <td className="p-2.5">{(o.basePrice||0).toLocaleString()}</td>
+                        <td className="p-2.5">{(o.logisticsFee||0).toLocaleString()}</td>
+                        <td className="p-2.5 font-bold">{(o.totalPrice||0).toLocaleString()}</td>
+                        <td className="p-2.5 text-muted-foreground">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("en-KE") : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {vendorOrders.length > 50 && <p className="text-xs text-center text-muted-foreground py-2">Showing first 50 — export CSV for full list</p>}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── REVENUE ── */}
+        {tab === "revenue" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Total Revenue",   value: fmt(totalRevenue),    color: "text-emerald-700" },
+                { label: "Your Net (90%)",  value: fmt(vendorNet),       color: "text-green-700" },
+                { label: "Platform (10%)",  value: fmt(platformFee),     color: "text-red-500" },
+                { label: "Avg Order Value", value: fmt(avgOrderValue),   color: "text-purple-700" },
+              ].map(k => (
+                <Card key={k.label} className="p-4 text-center">
+                  <p className={`font-heading font-bold text-xl ${k.color}`}>{k.value}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
+                </Card>
+              ))}
+            </div>
+
+            <Card className="p-5">
+              <h3 className="font-heading font-semibold text-sm mb-3">Monthly Revenue Trend (last 6 months)</h3>
+              {monthlyOrders.every(m => m.revenue === 0) ? <EmptyChart /> : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={monthlyOrders}>
+                    <defs>
+                      <linearGradient id="gVendorRev" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="month" fontSize={11} />
+                    <YAxis fontSize={11} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v: number) => [`KES ${v.toLocaleString()}`, "Revenue"]} />
+                    <Area type="monotone" dataKey="revenue" stroke="#22c55e" fill="url(#gVendorRev)" strokeWidth={2} name="Revenue" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Revenue Breakdown</h3>
+                <StatRow label="Total Gross Revenue" value={fmt(totalRevenue)} highlight />
+                <StatRow label="Product Sales Revenue" value={fmt(productRevenue)} />
+                <StatRow label="Delivery Fees Collected" value={fmt(deliveryRevenue)} />
+                <StatRow label="Your Net Earnings (90%)" value={fmt(vendorNet)} highlight />
+                <StatRow label="Platform Commission (10%)" value={fmt(platformFee)} />
+                <StatRow label="Avg Order Value" value={fmt(avgOrderValue)} />
+              </Card>
+              <Card className="p-4">
+                <h3 className="font-heading font-bold text-xs uppercase tracking-wide text-muted-foreground mb-3">Sales Stats</h3>
+                <StatRow label="Purchase Orders" value={purchaseOrders.length} />
+                <StatRow label="Free Claims" value={claimOrders.length} />
+                <StatRow label="Paid Orders" value={purchaseOrders.length} highlight />
+                <StatRow label="Delivery Orders" value={deliveryOrders.length} />
+                <StatRow label="Pickup Orders" value={pickupOrders.length} />
+                <StatRow label="Completion Rate" value={pct(completedOrders.length, vendorOrders.length)} highlight />
+              </Card>
+            </div>
+
+            <div className="flex justify-end no-print">
+              <Button onClick={exportOrders} variant="outline" size="sm" className="gap-1.5">
+                <Download className="w-3.5 h-3.5" /> Export Orders CSV
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -2,6 +2,11 @@ export const API_BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api`
   : '/api';
 
+// Module-level token store — always up to date regardless of localStorage timing
+let _token: string | null = null;
+export const setAuthToken = (token: string | null) => { _token = token; };
+export const clearAuthToken = () => { _token = null; };
+
 export const apiClient = {
   get: async (endpoint: string) => {
     return request(endpoint, { method: 'GET' });
@@ -18,13 +23,16 @@ export const apiClient = {
 };
 
 async function request(endpoint: string, options: RequestInit) {
-  const token = localStorage.getItem('lisheToken');
+  // Prefer in-memory token, fall back to localStorage for page-reload resilience
+  const token = _token ?? localStorage.getItem('lisheToken');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    console.warn('[apiClient] No token available for', endpoint);
   }
 
   const controller = new AbortController();

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { User, UserCapabilities } from "@/types";
-import { API_BASE } from "@/lib/apiClient";
+import { API_BASE, setAuthToken, clearAuthToken } from "@/lib/apiClient";
 
 // Default capabilities for new users
 const defaultCapabilities: UserCapabilities = {
@@ -17,6 +17,7 @@ interface AuthContextType {
   login: (user: User, token: string) => void;
   logout: () => void;
   updateAuthUser: (updates: Partial<User>) => void;
+  refreshUser: () => Promise<void>;
   hasCapability: (capability: keyof UserCapabilities) => boolean;
   hasAnyCapability: (...capabilities: (keyof UserCapabilities)[]) => boolean;
   isAuthenticated: boolean;
@@ -50,7 +51,11 @@ const normalizeUser = (userData: any): User => ({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getStoredUser());
-  const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [token, setToken] = useState<string | null>(() => {
+    const t = getStoredToken();
+    if (t) setAuthToken(t); // seed in-memory token on page load
+    return t;
+  });
   const [isInitializing, setIsInitializing] = useState(true);
 
   // Get capabilities from user or use defaults
@@ -70,9 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const response = await fetch(`${API_BASE}/users/me`, {
-          headers: {
-            'Authorization': `Bearer ${currentToken}`
-          },
+          headers: { 'Authorization': `Bearer ${currentToken}` },
           signal: controller.signal
         });
 
@@ -82,19 +85,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userData = await response.json();
           const normalizedUser = normalizeUser(userData);
           setUser(normalizedUser);
+          setAuthToken(currentToken);
           localStorage.setItem("lisheUser", JSON.stringify(normalizedUser));
-        } else {
-          // Token is invalid or server rejected it
+        } else if (response.status === 401) {
+          // Only clear session on explicit auth rejection
           logout();
         }
+        // Any other status (500, network issue) — keep existing session
       } catch (error) {
-        // Network error (server down) or timeout
+        // Network error or timeout — do NOT clear the token, keep user logged in
         if (error instanceof Error && error.name === 'AbortError') {
-          console.warn("Session verification timed out");
+          console.warn("Session verification timed out — keeping existing session");
         } else {
-          console.error("Session verification failed:", error);
+          console.warn("Session verification failed — keeping existing session:", error);
         }
-        logout();
+        setAuthToken(currentToken); // ensure in-memory token is set
       } finally {
         setIsInitializing(false);
       }
@@ -113,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedUser = normalizeUser(user);
     setUser(normalizedUser);
     setToken(token);
+    setAuthToken(token); // keep in-memory token in sync
     localStorage.setItem("lisheUser", JSON.stringify(normalizedUser));
     localStorage.setItem("lisheToken", token);
   };
@@ -120,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null);
     setToken(null);
+    clearAuthToken(); // clear in-memory token
     localStorage.removeItem("lisheUser");
     localStorage.removeItem("lisheToken");
   };
@@ -131,6 +138,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("lisheUser", JSON.stringify(updated));
       return updated;
     });
+  };
+
+  const refreshUser = async () => {
+    const currentToken = getStoredToken();
+    if (!currentToken) return;
+    try {
+      const response = await fetch(`${API_BASE}/users/me`, {
+        headers: { 'Authorization': `Bearer ${currentToken}` }
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        const normalizedUser = normalizeUser(userData);
+        setUser(normalizedUser);
+        localStorage.setItem("lisheUser", JSON.stringify(normalizedUser));
+      }
+    } catch (error) {
+      console.error("Failed to refresh user:", error);
+    }
   };
 
   // Helper functions to check capabilities
@@ -155,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       updateAuthUser,
+      refreshUser,
       hasCapability,
       hasAnyCapability,
       isAuthenticated: !!user,

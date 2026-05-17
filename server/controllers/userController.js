@@ -133,6 +133,33 @@ const getUserProfile = async (req, res) => {
   }
 };
 
+// @desc    Update profile (name, phone, location)
+// @route   PUT /api/users/me
+const updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const { name, phone, location } = req.body;
+    if (name !== undefined)  user.name  = name;
+    if (phone !== undefined) user.phone = phone;
+    if (location !== undefined) {
+      user.location = {
+        lat:     location.lat     ?? user.location?.lat     ?? null,
+        lng:     location.lng     ?? user.location?.lng     ?? null,
+        address: location.address ?? user.location?.address ?? null,
+      };
+    }
+
+    await user.save();
+    const u = user.toObject();
+    delete u.password;
+    res.json({ success: true, user: u });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 // @desc    Get all users (admin only)
 // @route   GET /api/users
 const getAllUsers = async (req, res) => {
@@ -166,290 +193,174 @@ const getSubscriptionPlans = async (req, res) => {
 };
 
 /**
- * Subscribe to a plan with wallet or M-Pesa payment
- * Supports 5-second simulated delay for both payment methods
+ * Subscribe to a plan — activates immediately, no payment gateway
  */
 const subscribeToPlan = async (req, res) => {
   try {
-    const { planId, paymentMethod, phoneNumber } = req.body;
+    const { planId } = req.body;
     const userId = req.user?.id;
 
-    if (!userId) {
-      return res.status(401).json({ success: false, message: 'Authentication required' });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!planId) return res.status(400).json({ success: false, message: 'planId is required' });
 
-    if (!planId || !paymentMethod) {
-      return res.status(400).json({ success: false, message: 'planId and paymentMethod are required' });
-    }
-
-    if (!['wallet', 'mpesa'].includes(paymentMethod)) {
-      return res.status(400).json({ success: false, message: 'Invalid payment method. Use wallet or mpesa' });
-    }
-
-    // Validate plan from database
     const plan = await SubscriptionPlan.findOne({ planId, isActive: true });
-    if (!plan) {
-      return res.status(400).json({ success: false, message: 'Invalid or inactive plan selected' });
-    }
+    if (!plan) return res.status(400).json({ success: false, message: 'Invalid or inactive plan' });
 
     const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    // Free plan - no payment needed
-    if (plan.price === 0) {
-      user.subscription = {
-        plan: planId,
-        status: 'active',
-        startDate: new Date(),
-        endDate: null,
-        autoRenew: false,
-        paymentMethod: null,
-      };
-      // Update capabilities based on plan
-      user.capabilities = {
-        canBrowse: true,
-        canSell: plan.capabilities.canSell || false,
-        canDeliver: plan.capabilities.canDeliver || false,
-      };
-      await user.save();
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
 
-      return res.status(200).json({
-        success: true,
-        message: `Subscribed to ${plan.name} plan successfully`,
-        subscription: user.subscription,
-        capabilities: user.capabilities,
-      });
-    }
-
-    // Set pending status while processing
     user.subscription = {
       plan: planId,
-      status: 'pending',
-      startDate: null,
-      endDate: null,
+      status: 'active',
+      startDate,
+      endDate,
       autoRenew: false,
-      paymentMethod,
+      paymentMethod: null,
     };
+
+    user.capabilities = {
+      canBrowse: true,
+      canSell: plan.capabilities.canSell || false,
+      canDeliver: plan.capabilities.canDeliver || false,
+    };
+
+    user.paymentHistory.push({
+      amount: plan.price,
+      plan: planId,
+      paidAt: startDate,
+      status: 'completed',
+    });
+
+    user.subscriptionHistory.push({
+      plan: planId,
+      status: 'active',
+      startDate,
+      endDate,
+      amount: plan.price,
+    });
+
     await user.save();
 
-    // Simulate 5-second processing delay
-    setTimeout(async () => {
-      try {
-        if (paymentMethod === 'wallet') {
-          // Wallet payment processing
-          if (user.walletBalance < plan.price) {
-            user.subscription.status = 'cancelled';
-            await user.save();
-            return; // Insufficient balance
-          }
-
-          // Deduct from wallet
-          user.walletBalance -= plan.price;
-          
-          // Activate subscription
-          const startDate = new Date();
-          const endDate = new Date(startDate.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
-          
-          user.subscription = {
-            plan: planId,
-            status: 'active',
-            startDate,
-            endDate,
-            autoRenew: false,
-            paymentMethod: 'wallet',
-          };
-          
-          // Update capabilities based on plan
-          user.capabilities = {
-            canBrowse: true,
-            canSell: plan.capabilities.canSell || false,
-            canDeliver: plan.capabilities.canDeliver || false,
-          };
-          
-          // Add to payment history
-          user.paymentHistory.push({
-            amount: plan.price,
-            plan: planId,
-            paidAt: new Date(),
-            status: 'completed',
-            paymentMethod: 'wallet',
-          });
-          
-          // Add to subscription history
-          user.subscriptionHistory.push({
-            plan: planId,
-            status: 'active',
-            startDate,
-            endDate,
-            paymentMethod: 'wallet',
-            amount: plan.price,
-          });
-          
-          await user.save();
-          console.log(`[WALLET PAYMENT] User ${user.email} subscribed to ${plan.name} for KES ${plan.price}`);
-          
-        } else if (paymentMethod === 'mpesa') {
-          // M-Pesa payment processing
-          if (!phoneNumber || !mpesaService.isValidPhoneNumber(phoneNumber)) {
-            user.subscription.status = 'cancelled';
-            await user.save();
-            return;
-          }
-
-          const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
-          const callBackUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/subscription/callback`;
-
-          try {
-            const result = await mpesaService.initiateSTKPush({
-              phone: formattedPhone,
-              amount: plan.price,
-              accountReference: `LPSUB${userId}`,
-              transactionDesc: `Lishe Pamoja - ${plan.name} Subscription`,
-              callBackUrl,
-            });
-
-            user.subscription.mpesaCheckoutRequestId = result.checkoutRequestId;
-            await user.save();
-            
-            console.log(`[MPESA PAYMENT] STK Push initiated for ${user.email}: ${plan.name} - KES ${plan.price}`);
-          } catch (mpesaError) {
-            user.subscription.status = 'cancelled';
-            await user.save();
-            console.error(`[MPESA ERROR] Failed to initiate payment for ${user.email}:`, mpesaError.message);
-          }
-        }
-      } catch (error) {
-        console.error('Payment processing error:', error);
-        // Attempt to reset user subscription on error
-        try {
-          user.subscription.status = 'cancelled';
-          await user.save();
-        } catch (saveError) {
-          console.error('Failed to reset subscription status:', saveError);
-        }
-      }
-    }, 5000); // 5-second delay
-
-    res.status(200).json({
-      success: true,
-      message: 'Payment processing initiated. Please wait...',
-      data: {
-        plan: plan.name,
-        amount: plan.price,
-        paymentMethod,
-        processingTime: 5,
-      },
-    });
+    console.log(`[SUBSCRIPTION] ${user.email} activated ${plan.name} - KES ${plan.price}`);
+    return res.status(200).json({ success: true, message: `Subscribed to ${plan.name}` });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Subscription Error', error: error.message });
   }
 };
 
 /**
- * Upgrade to a higher plan
+ * Change plan (upgrade or downgrade) with prorated calculations.
+ *
+ * UPGRADE (new plan costs more):
+ *   - Remaining value of current plan is credited
+ *   - New plan starts now, ends 30 days from now
+ *   - No charge (remaining value covers or exceeds new plan cost in simulation)
+ *
+ * DOWNGRADE (new plan costs less):
+ *   - Remaining value converted to extra days on the cheaper plan
+ *   - newEndDate = today + floor(remainingValue / dailyRateNew) days
  */
-  const upgradePlan = async (req, res) => {
+const changePlan = async (req, res) => {
   try {
-    const { targetPlan, phoneNumber, price } = req.body;
+    const { planId } = req.body;
     const userId = req.user?.id;
 
-    if (!userId) {
-      return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!planId) return res.status(400).json({ success: false, message: 'planId is required' });
+
+    const [user, newPlan] = await Promise.all([
+      User.findById(userId),
+      SubscriptionPlan.findOne({ planId, isActive: true }),
+    ]);
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (!newPlan) return res.status(400).json({ success: false, message: 'Invalid or inactive plan' });
+
+    const currentPlanId = user.subscription?.plan;
+    if (currentPlanId === planId) {
+      return res.status(400).json({ success: false, message: 'Already on this plan' });
     }
 
-    if (!targetPlan || !phoneNumber) {
-      return res.status(400).json({ success: false, message: 'targetPlan and phoneNumber are required' });
+    const now = new Date();
+    const currentEndDate = user.subscription?.endDate ? new Date(user.subscription.endDate) : null;
+    const daysRemaining = currentEndDate && currentEndDate > now
+      ? Math.max(0, Math.ceil((currentEndDate - now) / (1000 * 60 * 60 * 24)))
+      : 0;
+
+    // Fetch current plan details for value calculation
+    const currentPlan = currentPlanId
+      ? await SubscriptionPlan.findOne({ planId: currentPlanId })
+      : null;
+
+    const currentDailyRate = currentPlan ? currentPlan.price / (currentPlan.durationDays || 30) : 0;
+    const remainingValue = Math.round(daysRemaining * currentDailyRate);
+
+    const newDailyRate = newPlan.price / (newPlan.durationDays || 30);
+    const isUpgrade = newPlan.price > (currentPlan?.price || 0);
+
+    let newEndDate;
+    let changeType;
+    let summary;
+
+    if (!currentPlan || daysRemaining === 0) {
+      // No active plan — fresh start
+      newEndDate = new Date(now.getTime() + newPlan.durationDays * 24 * 60 * 60 * 1000);
+      changeType = 'new';
+      summary = `Started ${newPlan.name} for ${newPlan.durationDays} days`;
+    } else if (isUpgrade) {
+      // Upgrade: credit buys fewer days at the higher daily rate
+      const daysFromCredit = Math.floor(remainingValue / newDailyRate);
+      newEndDate = new Date(now.getTime() + daysFromCredit * 24 * 60 * 60 * 1000);
+      changeType = 'upgrade';
+      summary = `Upgraded to ${newPlan.name}. Your KES ${remainingValue} remaining credit gives you ${daysFromCredit} days on the new plan`;
+    } else {
+      // Downgrade: remaining value stretches further on the cheaper plan
+      const extraDays = Math.floor(remainingValue / newDailyRate);
+      const totalDays = newPlan.durationDays + extraDays;
+      newEndDate = new Date(now.getTime() + totalDays * 24 * 60 * 60 * 1000);
+      changeType = 'downgrade';
+      summary = `Downgraded to ${newPlan.name}. Your KES ${remainingValue} remaining value gives you ${extraDays} extra days on top of the ${newPlan.durationDays}-day plan (${totalDays} days total)`;
     }
 
-    const user = await User.findById(userId);
-    const currentPlan = user.subscription?.plan || 'free';
+    user.subscription = {
+      plan: planId,
+      status: 'active',
+      startDate: now,
+      endDate: newEndDate,
+      autoRenew: false,
+      paymentMethod: null,
+    };
 
-    // Check if upgrade is valid (bypass for dynamic plans starting with sp_)
-    if (!targetPlan.startsWith('sp_') && !canUpgrade(currentPlan, targetPlan)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot upgrade from ${currentPlan} to ${targetPlan}` 
-      });
-    }
+    user.capabilities = {
+      canBrowse: true,
+      canSell: newPlan.capabilities.canSell || false,
+      canDeliver: newPlan.capabilities.canDeliver || false,
+    };
 
-    let targetPlanDetails = SUBSCRIPTION_PLANS[targetPlan];
-    
-    // Create mock details for dynamic plans
-    if (!targetPlanDetails && targetPlan.startsWith('sp_')) {
-      targetPlanDetails = {
-        name: 'Custom Plan',
-        price: price || 0,
-        duration: 30
-      };
-    }
-
-    if (!targetPlanDetails) {
-      return res.status(400).json({ success: false, message: 'Invalid target plan' });
-    }
-
-    // Calculate amount (prorated if current plan is active)
-    let amount = targetPlanDetails.price;
-    if (user.subscription?.endDate) {
-      const daysRemaining = Math.ceil(
-        (new Date(user.subscription.endDate) - new Date()) / (1000 * 60 * 60 * 24)
-      );
-      if (daysRemaining > 0) {
-        const prorated = calculateProratedAmount(currentPlan, targetPlan, daysRemaining);
-        if (prorated !== null) {
-          amount = prorated;
-        }
-      }
-    }
-
-    // Free upgrade
-    if (amount === 0) {
-      user.subscription = {
-        plan: targetPlan,
-        status: 'active',
-        startDate: new Date(),
-        endDate: new Date(Date.now() + targetPlanDetails.duration * 24 * 60 * 60 * 1000),
-        autoRenew: false,
-      };
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: `Upgraded to ${targetPlanDetails.name} plan successfully`,
-        subscription: user.subscription,
-      });
-    }
-
-    // Validate phone and initiate payment
-    if (!mpesaService.isValidPhoneNumber(phoneNumber)) {
-      return res.status(400).json({ success: false, message: 'Invalid phone number format' });
-    }
-
-    const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
-    const callBackUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/api/users/subscription/callback`;
-
-    const result = await mpesaService.initiateSTKPush({
-      phone: formattedPhone,
-      amount,
-      accountReference: `LPUPG${userId}`,
-      transactionDesc: `Lishe Pamoja - Upgrade to ${targetPlanDetails.name}`,
-      callBackUrl,
+    user.subscriptionHistory.push({
+      plan: planId,
+      status: 'active',
+      startDate: now,
+      endDate: newEndDate,
+      amount: newPlan.price,
     });
 
-    user.subscription.plan = targetPlan;
-    user.subscription.status = 'pending';
-    user.subscription.mpesaCheckoutRequestId = result.checkoutRequestId;
     await user.save();
 
-    res.status(200).json({
+    console.log(`[PLAN CHANGE] ${user.email}: ${currentPlanId || 'free'} → ${planId} (${changeType}) | ends ${newEndDate.toDateString()}`);
+
+    return res.status(200).json({
       success: true,
-      message: 'Upgrade payment initiated. Please enter your PIN on your phone.',
-      data: {
-        checkoutRequestId: result.checkoutRequestId,
-        amount,
-        plan: targetPlanDetails.name,
-      },
+      changeType,
+      summary,
+      daysRemaining: Math.ceil((newEndDate - now) / (1000 * 60 * 60 * 24)),
+      endDate: newEndDate,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Upgrade Error', error: error.message });
+    res.status(500).json({ success: false, message: 'Plan change error', error: error.message });
   }
 };
 
@@ -635,25 +546,25 @@ const handleSubscriptionCallback = async (req, res) => {
     }
 
     if (ResultCode === 0) {
-      // Payment successful
-      const planDetails = SUBSCRIPTION_PLANS[user.subscription.plan];
-      
+      // Payment successful — fetch plan from DB
+      const plan = await SubscriptionPlan.findOne({ planId: user.subscription.plan });
+      const durationDays = plan?.durationDays || 30;
+
+      const startDate = new Date();
+      const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
       user.subscription.status = 'active';
-      user.subscription.startDate = new Date();
-      user.subscription.endDate = planDetails.duration 
-        ? new Date(Date.now() + planDetails.duration * 24 * 60 * 60 * 1000)
-        : null;
+      user.subscription.startDate = startDate;
+      user.subscription.endDate = endDate;
       user.subscription.mpesaReceiptNumber = MpesaReceiptNumber;
       user.subscription.mpesaCheckoutRequestId = null;
 
-      // Update capabilities based on subscription plan
-      if (planDetails.capabilities) {
-        user.capabilities = {
-          canBrowse: planDetails.capabilities.canBrowse ?? true,
-          canSell: planDetails.capabilities.canSell ?? false,
-          canDeliver: planDetails.capabilities.canDeliver ?? false,
-        };
-      }
+      // Update capabilities based on DB plan
+      user.capabilities = {
+        canBrowse: true,
+        canSell: plan?.capabilities?.canSell || false,
+        canDeliver: plan?.capabilities?.canDeliver || false,
+      };
 
       // Add to payment history
       user.paymentHistory.push({
@@ -662,16 +573,27 @@ const handleSubscriptionCallback = async (req, res) => {
         mpesaReceiptNumber: MpesaReceiptNumber,
         paidAt: new Date(),
         status: 'completed',
+        paymentMethod: 'mpesa',
+      });
+
+      // Add to subscription history
+      user.subscriptionHistory.push({
+        plan: user.subscription.plan,
+        status: 'active',
+        startDate,
+        endDate,
+        paymentMethod: 'mpesa',
+        amount: Amount,
       });
 
       await user.save();
-      console.log(`Subscription activated for user ${user.email}: ${user.subscription.plan}, capabilities:`, user.capabilities);
+      console.log(`[MPESA CALLBACK] Subscription activated for ${user.email}: ${user.subscription.plan}`);
     } else {
-      // Payment failed
-      user.subscription.status = 'active'; // Keep previous plan
+      // Payment failed — reset to cancelled
+      user.subscription.status = 'cancelled';
       user.subscription.mpesaCheckoutRequestId = null;
       await user.save();
-      console.error('Subscription payment failed:', ResultDesc);
+      console.error(`[MPESA CALLBACK] Payment failed for ${user.email}: ${ResultDesc}`);
     }
 
     res.status(200).json({ ResultCode: 0, ResultDesc: 'ACK' });
@@ -681,17 +603,234 @@ const handleSubscriptionCallback = async (req, res) => {
   }
 };
 
+/**
+ * Poll M-Pesa payment status for subscription
+ * Frontend calls this after STK push to check if payment completed
+ */
+const checkMpesaPaymentStatus = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
+
+    const user = await User.findById(userId).select('-password');
+    const status = user.subscription?.status;
+
+    if (status === 'active') {
+      return res.status(200).json({
+        success: true,
+        status: 'active',
+        subscription: user.subscription,
+        capabilities: user.capabilities,
+      });
+    }
+
+    if (status === 'cancelled') {
+      return res.status(200).json({
+        success: false,
+        status: 'cancelled',
+        message: 'Payment was cancelled or failed.',
+      });
+    }
+
+    // Still pending
+    return res.status(200).json({ success: true, status: 'pending' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
+// @desc  Admin: update any user's capabilities / suspend / activate
+// @route PUT /api/users/admin/:id
+const adminUpdateUser = async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: 'Admin only' });
+    const { capabilities, isAdmin: makeAdmin, suspended, phone, name } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (capabilities !== undefined) user.capabilities = { ...user.capabilities, ...capabilities };
+    if (makeAdmin !== undefined) user.isAdmin = makeAdmin;
+    if (suspended !== undefined) {
+      user.subscription.status = suspended ? 'suspended' : 'active';
+    }
+    if (phone !== undefined) user.phone = phone;
+    if (name !== undefined) user.name = name;
+
+    await user.save();
+    const updated = user.toObject();
+    delete updated.password;
+    res.json({ success: true, user: updated });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc  Admin: delete a user
+// @route DELETE /api/users/admin/:id
+const adminDeleteUser = async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) return res.status(403).json({ message: 'Admin only' });
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'User deleted' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+/**
+ * Initiate wallet top-up via M-Pesa STK Push
+ * POST /api/users/wallet/topup
+ */
+async function walletTopup(req, res) {
+  try {
+    const { amount, phoneNumber } = req.body;
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
+    if (!amount || amount < 1) return res.status(400).json({ success: false, message: 'Amount must be at least KES 1' });
+    if (!phoneNumber) return res.status(400).json({ success: false, message: 'Phone number is required' });
+    if (!mpesaService.isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ success: false, message: 'Invalid phone number. Use 07XXXXXXXX or 2547XXXXXXXX' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const formattedPhone = mpesaService.formatPhoneNumber(phoneNumber);
+    const callBackUrl = `${process.env.BASE_URL}/api/users/wallet/topup/callback`;
+
+    const result = await mpesaService.initiateSTKPush({
+      phone: formattedPhone,
+      amount: Math.round(amount),
+      accountReference: `LPWALLET${userId.toString().slice(-6)}`,
+      transactionDesc: 'Lishe Pamoja Wallet Top-Up',
+      callBackUrl,
+    });
+
+    // Store pending top-up on user record so callback can match it
+    user.pendingTopup = {
+      checkoutRequestId: result.checkoutRequestId,
+      merchantRequestId: result.merchantRequestId,
+      amount: Math.round(amount),
+      phone: formattedPhone,
+      initiatedAt: new Date(),
+    };
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'STK Push sent. Enter your M-Pesa PIN to complete.',
+      checkoutRequestId: result.checkoutRequestId,
+    });
+  } catch (error) {
+    console.error('Wallet Topup Error:', error.message);
+    res.status(500).json({ success: false, message: error.message || 'Top-up initiation failed' });
+  }
+}
+
+/**
+ * M-Pesa STK Push callback for wallet top-up
+ * POST /api/users/wallet/topup/callback  (public — called by Safaricom)
+ */
+async function walletTopupCallback(req, res) {
+  try {
+    const body = req.body;
+    console.log('Wallet Topup Callback:', JSON.stringify(body, null, 2));
+
+    const stkCallback = body?.Body?.stkCallback;
+    if (!stkCallback) return res.status(200).json({ ResultCode: 0, ResultDesc: 'ACK' });
+
+    const { MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = stkCallback;
+
+    let amount = null;
+    let receiptNumber = null;
+    if (ResultCode === 0 && CallbackMetadata?.Item) {
+      for (const item of CallbackMetadata.Item) {
+        if (item.Name === 'Amount') amount = item.Value;
+        if (item.Name === 'MpesaReceiptNumber') receiptNumber = item.Value;
+      }
+    }
+
+    const user = await User.findOne({ 'pendingTopup.checkoutRequestId': CheckoutRequestID });
+    if (!user) {
+      console.error('Wallet topup: no user found for CheckoutRequestID', CheckoutRequestID);
+      return res.status(200).json({ ResultCode: 0, ResultDesc: 'ACK' });
+    }
+
+    if (ResultCode === 0) {
+      const credited = amount || user.pendingTopup.amount;
+      user.walletBalance = (user.walletBalance || 0) + credited;
+      console.log(`✅ Wallet topup: +KES ${credited} for user ${user.email}. New balance: ${user.walletBalance}`);
+    } else {
+      console.error(`❌ Wallet topup failed for ${user.email}. Code: ${ResultCode}, Desc: ${ResultDesc}`);
+    }
+
+    user.pendingTopup = undefined;
+    await user.save();
+
+    res.status(200).json({ ResultCode: 0, ResultDesc: 'ACK' });
+  } catch (error) {
+    console.error('Wallet Topup Callback Error:', error.message);
+    res.status(200).json({ ResultCode: 0, ResultDesc: 'ACK' });
+  }
+}
+
+/**
+ * Poll wallet top-up status (frontend polls this after STK Push)
+ * GET /api/users/wallet/topup/status/:checkoutRequestId
+ */
+async function walletTopupStatus(req, res) {
+  try {
+    const { checkoutRequestId } = req.params;
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Authentication required' });
+
+    // Check if the callback already cleared pendingTopup (means it completed)
+    const user = await User.findById(userId).select('walletBalance pendingTopup');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const stillPending = user.pendingTopup?.checkoutRequestId === checkoutRequestId;
+
+    if (!stillPending) {
+      // Callback already fired — payment succeeded (or was cleared)
+      return res.status(200).json({ success: true, status: 'completed', walletBalance: user.walletBalance });
+    }
+
+    // Still pending — ask Daraja directly
+    try {
+      const result = await mpesaService.checkSTKStatus(checkoutRequestId);
+      if (result.resultCode === 0) {
+        return res.status(200).json({ success: true, status: 'completed', walletBalance: user.walletBalance });
+      } else if (result.resultCode === 1032) {
+        return res.status(200).json({ success: true, status: 'cancelled' });
+      } else {
+        return res.status(200).json({ success: true, status: 'pending' });
+      }
+    } catch {
+      return res.status(200).json({ success: true, status: 'pending' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
 module.exports = {
   registerUser,
   loginUser,
   getUserProfile,
+  updateProfile,
   getSubscriptionPlans,
   subscribeToPlan,
-  upgradePlan,
+  changePlan,
   checkSubscriptionStatus,
   cancelSubscription,
   setupPayoutAccount,
   verifyPayoutAccount,
   handleSubscriptionCallback,
+  checkMpesaPaymentStatus,
   getAllUsers,
+  adminUpdateUser,
+  adminDeleteUser,
+  walletTopup,
+  walletTopupCallback,
+  walletTopupStatus,
 };

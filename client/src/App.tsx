@@ -18,9 +18,9 @@ import { DashboardLayout } from "./layouts/DashboardLayout";
 import AdminLayout from "./layouts/AdminLayout";
 
 // Dashboard Pages
-import BrowseListings from "./pages/dashboard/BrowseListings";
 import ListingDetails from "./pages/recipient/ListingDetails";
 import MyOrders from "./pages/dashboard/MyOrders";
+import CartPage from "./pages/dashboard/CartPage";
 import MapView from "./pages/dashboard/MapView";
 import WalletPage from "./pages/WalletPage";
 import ProfilePage from "./pages/dashboard/ProfilePage";
@@ -34,9 +34,8 @@ import SalesReports from "./pages/vendor/VendorReports";
 
 // Deliver Pages (require canDeliver capability)
 import DeliverOverview from "./pages/dashboard/deliver/DeliverOverview";
-import ActiveDispatches from "./pages/logistics/LogisticsDispatches";
-import RouteMap from "./pages/logistics/LogisticsMap";
-import CompletedDeliveries from "./pages/logistics/LogisticsCompleted";
+import Dispatches from "./pages/logistics/Dispatches";
+import LogisticsReport from "./pages/logistics/LogisticsReport";
 
 // Admin Pages (require isAdmin)
 import AdminOverview from "./pages/admin/AdminDashboard";
@@ -44,6 +43,7 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminListings from "./pages/admin/AdminListings";
 import AdminReports from "./pages/admin/AdminReports";
+import AdminEarnings from "./pages/admin/AdminEarnings";
 
 // Subscription
 import SubscriptionPage from "./pages/dashboard/SubscriptionPage";
@@ -156,7 +156,7 @@ function AppRoutes() {
 
         {/* Logistics legacy redirects */}
         <Route path="/logistics" element={<Navigate to="/dashboard/deliver" replace />} />
-        <Route path="/logistics/map" element={<Navigate to="/dashboard/deliver/map" replace />} />
+        <Route path="/logistics/map" element={<Navigate to="/dashboard/map" replace />} />
         <Route path="/logistics/completed" element={<Navigate to="/dashboard/deliver/completed" replace />} />
         <Route path="/logistics/wallet" element={<Navigate to="/dashboard/wallet" replace />} />
 
@@ -168,10 +168,11 @@ function AppRoutes() {
         <Route path="/dashboard/admin/reports" element={<Navigate to="/admin/reports" replace />} />
 
         {/* Unified Dashboard Routes */}
-        <Route path="/dashboard" element={<Navigate to="/dashboard/listings" replace />} />
-        <Route path="/dashboard/listings" element={<DashboardLayout><BrowseListings /></DashboardLayout>} />
+        <Route path="/dashboard" element={<Navigate to="/dashboard/map" replace />} />
+        <Route path="/dashboard/listings" element={<Navigate to="/dashboard/map" replace />} />
         <Route path="/dashboard/listings/:id" element={<DashboardLayout><ListingDetails /></DashboardLayout>} />
         <Route path="/dashboard/orders" element={<DashboardLayout><MyOrders /></DashboardLayout>} />
+        <Route path="/dashboard/cart" element={<DashboardLayout><CartPage /></DashboardLayout>} />
         <Route path="/dashboard/map" element={<DashboardLayout><MapView /></DashboardLayout>} />
         <Route path="/dashboard/wallet" element={<DashboardLayout><WalletPage /></DashboardLayout>} />
         <Route path="/dashboard/profile" element={<DashboardLayout><ProfilePage /></DashboardLayout>} />
@@ -200,6 +201,16 @@ function AppRoutes() {
         />
         <Route
           path="/dashboard/sell/create"
+          element={
+            <DashboardLayout>
+              <CapabilityGuard capability="canSell">
+                <CreateListing />
+              </CapabilityGuard>
+            </DashboardLayout>
+          }
+        />
+        <Route
+          path="/dashboard/sell/edit/:id"
           element={
             <DashboardLayout>
               <CapabilityGuard capability="canSell">
@@ -241,35 +252,29 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/dashboard/deliver/active"
+          path="/dashboard/deliver/dispatches"
           element={
             <DashboardLayout>
               <CapabilityGuard capability="canDeliver">
-                <ActiveDispatches />
+                <Dispatches />
               </CapabilityGuard>
             </DashboardLayout>
           }
         />
         <Route
-          path="/dashboard/deliver/map"
+          path="/dashboard/deliver/reports"
           element={
             <DashboardLayout>
               <CapabilityGuard capability="canDeliver">
-                <RouteMap />
+                <LogisticsReport />
               </CapabilityGuard>
             </DashboardLayout>
           }
         />
-        <Route
-          path="/dashboard/deliver/completed"
-          element={
-            <DashboardLayout>
-              <CapabilityGuard capability="canDeliver">
-                <CompletedDeliveries />
-              </CapabilityGuard>
-            </DashboardLayout>
-          }
-        />
+        <Route path="/dashboard/deliver/map" element={<Navigate to="/dashboard/map" replace />} />
+        <Route path="/dashboard/deliver/active" element={<Navigate to="/dashboard/deliver/dispatches" replace />} />
+        <Route path="/dashboard/deliver/available" element={<Navigate to="/dashboard/deliver/dispatches" replace />} />
+        <Route path="/dashboard/deliver/completed" element={<Navigate to="/dashboard/deliver/dispatches" replace />} />
 
         {/* Admin Routes - Protected by isAdmin, wrapped in AdminLayout */}
         <Route
@@ -285,7 +290,7 @@ function AppRoutes() {
           <Route path="subscriptions" element={<AdminSubscriptions />} />
           <Route path="listings" element={<AdminListings />} />
           <Route path="reports" element={<AdminReports />} />
-          <Route path="settings" element={<div className="p-6 text-center text-muted-foreground">Settings page coming soon</div>} />
+          <Route path="earnings" element={<AdminEarnings />} />
         </Route>
 
         {/* Auth */}

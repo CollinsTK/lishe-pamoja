@@ -20,6 +20,7 @@ interface CartContextType {
   addToCart: (listing: Listing, quantity: number, fulfillmentMode: 'Pickup' | 'Delivery', deliveryFee: number, deliveryLocation?: DeliveryLocation) => void;
   removeFromCart: (listingId: string) => void;
   updateQuantity: (listingId: string, quantity: number) => void;
+  updateDeliveryLocation: (listingId: string, location: DeliveryLocation, fee: number) => void;
   clearCart: () => void;
   getCartTotal: () => number;
 }
@@ -53,6 +54,14 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ));
   };
 
+  const updateDeliveryLocation = (listingId: string, location: DeliveryLocation, fee: number) => {
+    setCartItems(prev => prev.map(item =>
+      item.listing.id === listingId
+        ? { ...item, deliveryLocation: location, deliveryFee: fee }
+        : item
+    ));
+  };
+
   const clearCart = () => setCartItems([]);
 
   const getCartTotal = () => {
@@ -62,7 +71,7 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, updateQuantity, clearCart, getCartTotal }}>
+    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, updateQuantity, updateDeliveryLocation, clearCart, getCartTotal }}>
       {children}
     </CartContext.Provider>
   );

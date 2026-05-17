@@ -2,30 +2,33 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
-  let token;
+  const authHeader = req.headers.authorization;
 
-  // Check if the request has an authorization header that starts with "Bearer"
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      // Get token from header (Format is "Bearer <token>")
-      token = req.headers.authorization.split(' ')[1];
+  console.log(`[protect] ${req.method} ${req.path} | authHeader: ${authHeader ? authHeader.substring(0, 30) + '...' : 'MISSING'}`);
 
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Get user from the token payload (we signed it with the user's ID earlier)
-      // .select('-password') ensures we don't pass the hashed password along
-      req.user = await User.findById(decoded.id).select('-password');
-
-      next(); // Pass control to the next middleware or controller
-    } catch (error) {
-      console.error(error);
-      res.status(401).json({ message: 'Not authorized, token failed' });
-    }
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[protect] REJECTED: no Bearer header');
+    return res.status(401).json({ message: 'Not authorized, no token' });
   }
 
-  if (!token) {
-    res.status(401).json({ message: 'Not authorized, no token' });
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('[protect] token decoded, userId:', decoded.id);
+
+    req.user = await User.findById(decoded.id).select('-password');
+
+    if (!req.user) {
+      console.log('[protect] REJECTED: user not found in DB for id', decoded.id);
+      return res.status(401).json({ message: 'Not authorized, user not found' });
+    }
+
+    console.log('[protect] OK — user:', req.user.email, '| canSell:', req.user.capabilities?.canSell);
+    return next();
+  } catch (error) {
+    console.log('[protect] REJECTED: token verify failed —', error.message);
+    return res.status(401).json({ message: 'Not authorized, token failed' });
   }
 };
 

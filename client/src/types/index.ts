@@ -25,6 +25,7 @@ export interface User {
   subscription?: UserSubscription;
   subscriptionHistory?: SubscriptionHistoryItem[];
   walletBalance?: number;
+  location?: { lat: number | null; lng: number | null; address: string | null };
 }
 
 export interface VendorProfile {

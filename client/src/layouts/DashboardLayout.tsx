@@ -1,5 +1,5 @@
 import { ReactNode, useState } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Package,
   Plus,
@@ -11,16 +11,18 @@ import {
   LogOut,
   Wallet,
   Map,
-  Home,
   User,
   Truck,
   CheckSquare,
+  Send,
   Shield,
   Users,
   Store,
+  ShoppingCart,
 } from "lucide-react";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCart } from "@/contexts/CartContext";
 
 interface NavItem {
   to: string;
@@ -33,9 +35,8 @@ interface NavItem {
 // Navigation items with capability requirements
 const allNavItems: NavItem[] = [
   // Browse/Buy - available to all users
-  { to: "/dashboard/listings", icon: Home, label: "Browse Listings", capability: "canBrowse" },
-  { to: "/dashboard/orders", icon: ShoppingBag, label: "My Orders", capability: "canBrowse" },
   { to: "/dashboard/map", icon: Map, label: "Map View", capability: "canBrowse" },
+  { to: "/dashboard/orders", icon: ShoppingBag, label: "My Orders", capability: "canBrowse" },
 
   // Vendor features - require canSell
   { to: "/dashboard/sell", icon: Store, label: "Sell Food", capability: "canSell" },
@@ -46,9 +47,8 @@ const allNavItems: NavItem[] = [
 
   // Logistics features - require canDeliver
   { to: "/dashboard/deliver", icon: Truck, label: "Deliveries", capability: "canDeliver" },
-  { to: "/dashboard/deliver/active", icon: Package, label: "Active Dispatches", capability: "canDeliver" },
-  { to: "/dashboard/deliver/map", icon: Map, label: "Route Map", capability: "canDeliver" },
-  { to: "/dashboard/deliver/completed", icon: CheckSquare, label: "Completed", capability: "canDeliver" },
+  { to: "/dashboard/deliver/dispatches", icon: Send, label: "Dispatches", capability: "canDeliver" },
+  { to: "/dashboard/deliver/reports", icon: BarChart3, label: "Delivery Reports", capability: "canDeliver" },
 
   // Admin features - require isAdmin
   { to: "/admin", icon: Shield, label: "Admin Panel", adminOnly: true },
@@ -66,12 +66,17 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { logout, user, hasCapability, isAdmin } = useAuth();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const isMapPage = pathname === "/dashboard/map";
+  const { cartItems } = useCart();
+  const cartCount = cartItems.reduce((t, i) => t + i.quantity, 0);
 
   // Mobile bottom nav items - most important items only
   const mobileNavItems = allNavItems.filter((item) => {
     // Only show main features on mobile bottom nav
     const mobilePaths = [
-      "/dashboard/listings",
+      "/dashboard/map",
       "/dashboard/orders",
       "/dashboard/sell",
       "/dashboard/deliver",
@@ -155,12 +160,12 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     <div className="h-screen flex flex-col lg:flex-row bg-background overflow-hidden">
       {/* Mobile overlay */}
       {mobileOpen && (
-        <div className="fixed inset-0 bg-foreground/30 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
+        <div className="fixed inset-0 bg-foreground/30 z-[1090] lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
       {/* Desktop Sidebar - Fixed */}
       <aside
-        className={`hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ${
+        className={`hidden lg:flex fixed inset-y-0 left-0 z-[1100] flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 ${
           collapsed ? "w-16" : "w-60"
         }`}
       >
@@ -186,7 +191,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-sidebar-border scrollbar-track-transparent">
+        <nav className="flex-1 p-3 overflow-y-auto sidebar-scroll">
           <NavSection items={browseItems} />
           <NavSection title="Selling" items={sellItems} />
           <NavSection title="Logistics" items={deliverItems} />
@@ -207,7 +212,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* Mobile Drawer Sidebar */}
       <aside
-        className={`lg:hidden fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 w-72 shadow-2xl ${
+        className={`lg:hidden fixed inset-y-0 left-0 z-[1100] flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 w-72 shadow-2xl ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -223,7 +228,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 p-3 overflow-y-auto scrollbar-thin scrollbar-thumb-sidebar-border scrollbar-track-transparent">
+        <nav className="flex-1 p-3 overflow-y-auto sidebar-scroll">
           <NavSection items={browseItems} />
           <NavSection title="Selling" items={sellItems} />
           <NavSection title="Logistics" items={deliverItems} />
@@ -245,7 +250,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       {/* Main content area */}
       <div className={`flex-1 flex flex-col min-w-0 lg:ml-0 ${collapsed ? "lg:ml-16" : "lg:ml-60"} transition-all duration-300 h-full`}>
         {/* Fixed Header */}
-        <header className="flex-shrink-0 z-30 bg-card/80 backdrop-blur-lg border-b px-4 py-3 flex items-center justify-between">
+        <header className="flex-shrink-0 z-[1050] bg-card/80 backdrop-blur-lg border-b px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1" title="Open menu">
               <Menu className="w-5 h-5" />
@@ -256,6 +261,18 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center gap-2">
             <NotificationBell />
+            <button
+              onClick={() => navigate("/dashboard/cart")}
+              className="relative p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="My Cart"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </button>
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
               {user?.name?.charAt(0) || "U"}
             </div>
@@ -263,12 +280,14 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         </header>
 
         {/* Scrollable Main Content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-20 lg:pb-6">
-          {children}
+        <main className={`flex-1 overflow-y-auto page-scroll ${isMapPage ? "p-0 pb-16 lg:pb-0 overflow-hidden" : "p-4 lg:p-6 pb-20 lg:pb-6"}`}>
+          <div className={isMapPage ? "h-full" : "max-w-[1200px] mx-auto w-full"}>
+            {children}
+          </div>
         </main>
 
         {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-[1050] bg-card border-t border-border">
           <div className="flex items-center justify-around py-2">
             {mobileNavItems.map((item) => (
               <NavLink

@@ -41,14 +41,24 @@ const transactionSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  readyForDispatch: {
+    type: Boolean,
+    default: false,
+  },
+  deliveryLocation: {
+    lat:     { type: Number, default: null },
+    lng:     { type: Number, default: null },
+    address: { type: String, default: null },
+  },
   status: {
     type: String,
     enum: [
+      'PENDING_PAYMENT',
       'CLAIMED',
-      'LOGISTICS_ASSIGNED',
+      'AWAITING_RIDER',
+      'ASSIGNED',
       'IN_TRANSIT',
       'DELIVERED',
-      'COMPLETED',
       'CANCELLED'
     ],
     default: 'CLAIMED',
@@ -80,7 +90,7 @@ const transactionSchema = new mongoose.Schema({
   payment: {
     method: {
       type: String,
-      enum: ['mpesa', 'cash', 'card', 'none'],
+      enum: ['mpesa', 'cash', 'card', 'wallet', 'none'],
       default: 'none',
     },
     mpesaReceiptNumber: {
@@ -112,6 +122,15 @@ const transactionSchema = new mongoose.Schema({
       type: Date,
       default: null,
     },
+  },
+  earnings: {
+    vendorGross:     { type: Number, default: 0 },
+    vendorNet:       { type: Number, default: 0 },
+    riderGross:      { type: Number, default: 0 },
+    riderNet:        { type: Number, default: 0 },
+    platformFee:     { type: Number, default: 0 },
+    settled:         { type: Boolean, default: false },
+    settledAt:       { type: Date, default: null },
   },
   payout: {
     vendorAmount: {

@@ -1,45 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Wallet, Smartphone, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import { toast } from "sonner";
 import type { SubscriptionPlan } from "@/types";
 
 interface SubscriptionCheckoutProps {
-  plan: SubscriptionPlan;
+  plan: SubscriptionPlan | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
+type Stage = "confirm" | "processing" | "success" | "failed";
+
 export default function SubscriptionCheckout({ plan, isOpen, onClose, onSuccess }: SubscriptionCheckoutProps) {
-  const { user, updateAuthUser } = useAuth();
-  const [paymentMethod, setPaymentMethod] = useState<"wallet" | "mpesa">("wallet");
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone || "");
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { user, refreshUser } = useAuth();
+  const [stage, setStage] = useState<Stage>("confirm");
   const [countdown, setCountdown] = useState(5);
   const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const walletBalance = user?.walletBalance || 0;
-  const hasEnoughBalance = walletBalance >= plan.price;
+  useEffect(() => {
+    if (!isOpen) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setStage("confirm");
+      setError(null);
+      setCountdown(5);
+    }
+  }, [isOpen]);
 
-  const handlePayment = async () => {
+  if (!plan) return null;
+
+  const handleSubscribe = async () => {
     setError(null);
-    setIsProcessing(true);
+    setStage("processing");
     setCountdown(5);
 
-    // Start countdown animation
-    const countdownInterval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(countdownInterval);
-          return 0;
-        }
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current!); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -47,193 +49,143 @@ export default function SubscriptionCheckout({ plan, isOpen, onClose, onSuccess 
     try {
       const response = await apiClient.post("/users/subscription/subscribe", {
         planId: plan.planId,
-        paymentMethod,
-        phoneNumber: paymentMethod === "mpesa" ? phoneNumber : undefined,
       });
 
-      if (response.success) {
-        // Wait for the 5-second processing on the backend
-        setTimeout(async () => {
-          clearInterval(countdownInterval);
-          
-          // Check if wallet payment succeeded (balance was deducted)
-          if (paymentMethod === "wallet") {
-            if (hasEnoughBalance) {
-              // Update user with new subscription info
-              const endDate = new Date();
-              endDate.setDate(endDate.getDate() + plan.durationDays);
-              
-              updateAuthUser({
-                subscription: {
-                  plan: plan.planId,
-                  status: "active",
-                  startDate: new Date().toISOString(),
-                  endDate: endDate.toISOString(),
-                  paymentMethod: "wallet",
-                  autoRenew: false,
-                },
-                capabilities: {
-                  canBrowse: true,
-                  canSell: plan.capabilities.canSell,
-                  canDeliver: plan.capabilities.canDeliver,
-                },
-                walletBalance: walletBalance - plan.price,
-              });
-              
-              toast.success(`Successfully subscribed to ${plan.name}!`);
-              onSuccess();
-              onClose();
-            } else {
-              setError("Insufficient wallet balance. Please top up or choose M-Pesa.");
-              setIsProcessing(false);
+      if (!response.success) {
+        clearInterval(timerRef.current!);
+        setError(response.message || "Subscription failed. Please try again.");
+        setStage("failed");
+        return;
+      }
+
+      // If M-Pesa STK Push was triggered, poll for payment confirmation
+      if (response.checkoutRequestId) {
+        const checkoutRequestId = response.checkoutRequestId;
+        let attempts = 0;
+        const maxAttempts = 15;
+
+        const pollTimer = setInterval(async () => {
+          attempts++;
+          try {
+            const statusRes: any = await apiClient.get(
+              `/users/subscription/mpesa-status?checkoutRequestId=${checkoutRequestId}`
+            );
+            if (statusRes.resultCode === 0 || statusRes.status === "completed") {
+              clearInterval(pollTimer);
+              clearInterval(timerRef.current!);
+              await refreshUser();
+              setStage("success");
+              toast.success(`You are now subscribed to ${plan.name}!`);
+              setTimeout(() => { onSuccess(); onClose(); }, 2000);
+            } else if (statusRes.resultCode === 1032 || statusRes.status === "cancelled") {
+              clearInterval(pollTimer);
+              clearInterval(timerRef.current!);
+              setError("Payment was cancelled. Please try again.");
+              setStage("failed");
+            } else if (attempts >= maxAttempts) {
+              clearInterval(pollTimer);
+              clearInterval(timerRef.current!);
+              setError("Payment timed out. If you completed the payment, please refresh the page.");
+              setStage("failed");
             }
-          } else {
-            // M-Pesa - show pending message
-            toast.success("M-Pesa payment initiated. Check your phone to complete payment.");
-            onClose();
+          } catch {
+            if (attempts >= maxAttempts) {
+              clearInterval(pollTimer);
+              clearInterval(timerRef.current!);
+              setError("Could not verify payment status. Please refresh the page.");
+              setStage("failed");
+            }
           }
-        }, 5500); // Slightly longer than backend delay to ensure completion
+        }, 4000);
       } else {
-        clearInterval(countdownInterval);
-        setError(response.message || "Payment failed. Please try again.");
-        setIsProcessing(false);
+        // Wallet payment — instant, no polling needed
+        clearInterval(timerRef.current!);
+        await refreshUser();
+        setStage("success");
+        toast.success(`You are now subscribed to ${plan.name}!`);
+        setTimeout(() => { onSuccess(); onClose(); }, 2000);
       }
     } catch (err) {
-      clearInterval(countdownInterval);
-      setError(err instanceof Error ? err.message : "Payment failed. Please try again.");
-      setIsProcessing(false);
+      clearInterval(timerRef.current!);
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setStage("failed");
     }
   };
 
-  const formatPrice = (price: number) => {
-    return price === 0 ? "Free" : `KES ${price.toLocaleString()}`;
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={isOpen} onOpenChange={() => { if (stage !== "processing") onClose(); }}>
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Subscribe to {plan.name}</DialogTitle>
+          <DialogTitle>
+            {stage === "confirm" && "Confirm Subscription"}
+            {stage === "processing" && "Activating Subscription"}
+            {stage === "success" && "Subscription Activated!"}
+            {stage === "failed" && "Subscription Failed"}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Plan Summary */}
-          <div className="bg-muted p-4 rounded-lg space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold">{plan.name}</span>
-              <span className="text-lg font-bold text-primary">{formatPrice(plan.price)}</span>
-            </div>
-            <p className="text-sm text-muted-foreground">{plan.description}</p>
-            <div className="flex gap-2 text-xs">
-              <span className="px-2 py-1 bg-primary/10 rounded">{plan.durationType}</span>
-              {plan.capabilities.canSell && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 rounded">Can Sell</span>
-              )}
-              {plan.capabilities.canDeliver && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">Can Deliver</span>
-              )}
-            </div>
-          </div>
+        <div className="py-4 space-y-4">
+          {/* Confirm */}
+          {stage === "confirm" && (
+            <>
+              <div className="bg-muted rounded-lg p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-base">{plan.name}</span>
+                  <span className="text-lg font-bold text-primary">
+                    KES {plan.price.toLocaleString()}<span className="text-xs font-normal text-muted-foreground">/{plan.durationType === "monthly" ? "mo" : plan.durationType}</span>
+                  </span>
+                </div>
+                {plan.description && <p className="text-sm text-muted-foreground">{plan.description}</p>}
+                <div className="flex flex-wrap gap-1.5 text-xs pt-1">
+                  {plan.capabilities.canSell && <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Can Sell</span>}
+                  {plan.capabilities.canDeliver && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Can Deliver</span>}
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                By confirming, your account will be upgraded to the <span className="font-medium text-foreground">{plan.name}</span> plan.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+                <Button className="flex-1" onClick={handleSubscribe}>Confirm</Button>
+              </div>
+            </>
+          )}
 
-          {isProcessing ? (
-            <div className="text-center space-y-4 py-6">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+          {/* Processing */}
+          {stage === "processing" && (
+            <div className="text-center space-y-4 py-4">
+              <Loader2 className="h-14 w-14 animate-spin mx-auto text-primary" />
               <div>
-                <p className="font-medium">Processing payment...</p>
-                <p className="text-2xl font-bold text-primary mt-2">{countdown}s</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Please wait while we process your {paymentMethod === "wallet" ? "wallet" : "M-Pesa"} payment
-                </p>
+                <p className="font-semibold text-base">Setting up your subscription...</p>
+                <p className="text-4xl font-bold text-primary mt-3">{countdown}s</p>
+                <p className="text-sm text-muted-foreground mt-2">Activating {plan.name}</p>
               </div>
             </div>
-          ) : (
-            <>
-              {error && (
-                <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
-                  <AlertCircle className="h-4 w-4" />
-                  {error}
-                </div>
-              )}
+          )}
 
-              <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as "wallet" | "mpesa")}>
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="wallet">
-                    <Wallet className="h-4 w-4 mr-2" />
-                    Wallet
-                  </TabsTrigger>
-                  <TabsTrigger value="mpesa">
-                    <Smartphone className="h-4 w-4 mr-2" />
-                    M-Pesa
-                  </TabsTrigger>
-                </TabsList>
+          {/* Success */}
+          {stage === "success" && (
+            <div className="text-center space-y-3 py-4">
+              <CheckCircle className="h-14 w-14 mx-auto text-green-500" />
+              <p className="font-semibold text-lg">You're all set!</p>
+              <p className="text-sm text-muted-foreground">
+                Your <span className="font-medium text-foreground">{plan.name}</span> subscription is now active.
+              </p>
+            </div>
+          )}
 
-                <TabsContent value="wallet" className="space-y-4">
-                  <div className="p-4 bg-muted rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm text-muted-foreground">Wallet Balance</span>
-                      <span className="font-semibold">KES {walletBalance.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Amount to Deduct</span>
-                      <span className="font-semibold text-primary">KES {plan.price.toLocaleString()}</span>
-                    </div>
-                    <div className="border-t mt-3 pt-3 flex justify-between items-center">
-                      <span className="font-medium">Remaining Balance</span>
-                      <span className={`font-bold ${hasEnoughBalance ? "text-green-600" : "text-destructive"}`}>
-                        KES {(walletBalance - plan.price).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {!hasEnoughBalance && (
-                    <div className="text-sm text-destructive">
-                      Insufficient balance. Please top up your wallet or choose M-Pesa.
-                    </div>
-                  )}
-
-                  <Button
-                    onClick={handlePayment}
-                    disabled={!hasEnoughBalance}
-                    className="w-full"
-                  >
-                    Pay with Wallet
-                  </Button>
-                </TabsContent>
-
-                <TabsContent value="mpesa" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">M-Pesa Phone Number</Label>
-                    <Input
-                      id="phone"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="254712345678"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter your M-Pesa registered phone number starting with 254
-                    </p>
-                  </div>
-
-                  <div className="p-4 bg-muted rounded-lg text-sm">
-                    <p className="font-medium mb-2">Payment Instructions:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                      <li>Click "Pay with M-Pesa" below</li>
-                      <li>Wait for the STK push on your phone</li>
-                      <li>Enter your M-Pesa PIN to confirm</li>
-                      <li>Your subscription will be activated</li>
-                    </ol>
-                  </div>
-
-                  <Button
-                    onClick={handlePayment}
-                    disabled={!phoneNumber || phoneNumber.length < 10}
-                    className="w-full"
-                  >
-                    Pay with M-Pesa
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            </>
+          {/* Failed */}
+          {stage === "failed" && (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 bg-destructive/10 text-destructive rounded-lg text-sm">
+                <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+                <Button className="flex-1" onClick={() => { setStage("confirm"); setError(null); }}>Try Again</Button>
+              </div>
+            </div>
           )}
         </div>
       </DialogContent>

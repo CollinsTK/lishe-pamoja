@@ -17,6 +17,9 @@ interface DataContextType {
   updateListing: (id: string, updates: Partial<Listing>) => void;
   updateOrder: (id: string, updates: any) => void;
   updateUserWallet: (userId: string, amount: number) => void;
+  verifyUser: (userId: string) => Promise<void>;
+  updateUser: (userId: string, updates: any) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
   addSubscriptionPlan: (plan: any) => void;
   deleteSubscriptionPlan: (planId: string) => void;
   createSubscriptionPlan: (plan: any) => Promise<any>;
@@ -272,6 +275,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, walletBalance: (u.walletBalance || 0) + amount } : u));
   };
 
+  // Admin: grant canSell + canDeliver capabilities ("verify" vendor/logistics)
+  const verifyUser = async (userId: string) => {
+    const res: any = await apiClient.put(`/users/admin/${userId}`, {
+      capabilities: { canSell: true, canDeliver: true },
+    });
+    if (res.success && res.user) {
+      setUsers(prev => prev.map(u => u.id === userId || u._id === userId ? { ...res.user, id: res.user._id || userId } : u));
+    }
+  };
+
+  // Admin: update arbitrary user fields (suspend, activate, capabilities, etc.)
+  const updateUser = async (userId: string, updates: any) => {
+    const suspended = updates.status === 'Suspended' ? true : updates.status === 'Active' ? false : undefined;
+    const payload: any = {};
+    if (suspended !== undefined) payload.suspended = suspended;
+    if (updates.capabilities) payload.capabilities = updates.capabilities;
+    if (updates.isAdmin !== undefined) payload.isAdmin = updates.isAdmin;
+    const res: any = await apiClient.put(`/users/admin/${userId}`, payload);
+    if (res.success && res.user) {
+      setUsers(prev => prev.map(u => u.id === userId || u._id === userId ? { ...res.user, id: res.user._id || userId } : u));
+    }
+  };
+
+  // Admin: delete a user
+  const deleteUser = async (userId: string) => {
+    await apiClient.delete(`/users/admin/${userId}`);
+    setUsers(prev => prev.filter(u => u.id !== userId && u._id !== userId));
+  };
+
   return (
     <DataContext.Provider
       value={{
@@ -289,6 +321,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateListing,
         updateOrder,
         updateUserWallet,
+        verifyUser,
+        updateUser,
+        deleteUser,
         addSubscriptionPlan,
         deleteSubscriptionPlan,
         createSubscriptionPlan,

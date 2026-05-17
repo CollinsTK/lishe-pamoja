@@ -71,13 +71,6 @@ class MpesaService {
       return this.accessToken;
     }
 
-    // Mock response for dummy credentials
-    if (this.consumerKey === 'your_consumer_key_here') {
-      this.accessToken = 'mock_access_token_12345';
-      this.tokenExpiry = new Date(Date.now() + 3599 * 1000);
-      return this.accessToken;
-    }
-
     const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
 
     try {
@@ -93,8 +86,15 @@ class MpesaService {
       
       return this.accessToken;
     } catch (error) {
-      console.error('M-Pesa Auth Error:', error.response?.data || error.message);
-      throw new Error(`Failed to get M-Pesa access token: ${error.response?.data?.errorMessage || error.message}`);
+      const isPlaceholder = !this.consumerKey || this.consumerKey.startsWith('REPLACE_');
+      console.error('❌ M-Pesa Auth Error:');
+      console.error('  Status :', error.response?.status);
+      console.error('  Body   :', JSON.stringify(error.response?.data));
+      console.error('  Credentials look like placeholders?', isPlaceholder);
+      if (isPlaceholder) {
+        console.error('  ➡ ACTION: Set MPESA_CONSUMER_KEY and MPESA_CONSUMER_SECRET in server/.env from https://developer.safaricom.co.ke/');
+      }
+      throw new Error(`M-Pesa auth failed (HTTP ${error.response?.status}): ${JSON.stringify(error.response?.data) || error.message}`);
     }
   }
 
@@ -134,36 +134,6 @@ class MpesaService {
     };
 
     try {
-      // Mock STK Push for dummy credentials
-      if (this.consumerKey === 'your_consumer_key_here') {
-        console.log(`[MOCK MPESA] STK Push initiated to ${phone} for KES ${amount}`);
-        // Auto-simulate callback success after 5 seconds
-        setTimeout(async () => {
-          try {
-            await axios.post(callBackUrl, {
-              MerchantRequestID: `MOCK_REQ_${Date.now()}`,
-              CheckoutRequestID: `MOCK_CHK_${Date.now()}`,
-              ResultCode: 0,
-              ResultDesc: 'The service request is processed successfully.',
-              Amount: amount,
-              MpesaReceiptNumber: `MOCK_REC_${Math.floor(Math.random() * 1000000)}`,
-              PhoneNumber: phone
-            });
-            console.log(`[MOCK MPESA] Auto-simulated callback sent to ${callBackUrl}`);
-          } catch (e) {
-            console.error(`[MOCK MPESA] Auto-simulated callback failed:`, e.message);
-          }
-        }, 5000);
-
-        return {
-          success: true,
-          merchantRequestId: `MOCK_REQ_${Date.now()}`,
-          checkoutRequestId: `MOCK_CHK_${Date.now()}`,
-          responseCode: '0',
-          responseDescription: 'Success. Request accepted for processing',
-        };
-      }
-
       const response = await axios.post(this.endpoints.stkPush, payload, {
         headers: {
           'Authorization': `Bearer ${token}`,

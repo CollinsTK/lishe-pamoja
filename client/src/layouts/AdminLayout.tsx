@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, LayoutDashboard, Users, Package, CreditCard, Settings, Shield, LogOut } from "lucide-react";
+import { Menu, LayoutDashboard, Users, Package, CreditCard, Shield, LogOut, TrendingUp, FileBarChart } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -12,7 +12,8 @@ const adminNavItems = [
   { path: "/admin/users", label: "Users", icon: Users },
   { path: "/admin/listings", label: "Listings", icon: Package },
   { path: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
-  { path: "/admin/settings", label: "Settings", icon: Settings },
+  { path: "/admin/earnings", label: "Earnings", icon: TrendingUp },
+  { path: "/admin/reports", label: "Reports", icon: FileBarChart },
 ];
 
 function AdminSidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -97,7 +98,7 @@ export default function AdminLayout() {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block w-64 border-r bg-background fixed h-full">
         <AdminSidebar />
@@ -111,7 +112,7 @@ export default function AdminLayout() {
       </Sheet>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-64">
+      <main className="flex-1 lg:ml-64 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {/* Mobile Header */}
         <header className="lg:hidden sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex items-center gap-4 px-4 h-14">

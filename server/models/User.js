@@ -30,8 +30,12 @@ const userSchema = new mongoose.Schema({
   // Phone number for contact and logistics.
   phone: { type: String },
 
-  // Optional location information for the user.
-  location: { type: String },
+  // Optional location information for the user (coordinates + address)
+  location: {
+    lat:     { type: Number, default: null },
+    lng:     { type: Number, default: null },
+    address: { type: String, default: null },
+  },
 
   // Subscription fields
   subscription: {
@@ -87,6 +91,15 @@ const userSchema = new mongoose.Schema({
 
   // User wallet balance for purchasing/receiving funds
   walletBalance: { type: Number, default: 0 },
+
+  // Pending M-Pesa wallet top-up (cleared by callback)
+  pendingTopup: {
+    checkoutRequestId: String,
+    merchantRequestId: String,
+    amount: Number,
+    phone: String,
+    initiatedAt: Date,
+  },
 
   // Timestamp when the user was created.
   createdAt: { type: Date, default: Date.now }

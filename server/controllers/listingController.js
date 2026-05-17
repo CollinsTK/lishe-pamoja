@@ -42,6 +42,10 @@ const createListing = async (req, res) => {
     } = req.body;
 
     const expiryDate = new Date(expiryDateTime);
+    if (!expiryDateTime || isNaN(expiryDate.getTime()) || expiryDate.getTime() <= Date.now()) {
+      return res.status(400).json({ success: false, message: 'Expiry date must be a valid future date and time.' });
+    }
+
     const pickupStartDate = pickupWindowStart
       ? new Date(pickupWindowStart)
       : new Date(`${expiryDateTime.split('T')[0]}T${pickupStart || '08:00'}`);
@@ -92,6 +96,13 @@ const updateListing = async (req, res) => {
     // Ensure the logged-in user matches the vendor who created it
     if (listing.vendor.toString() !== req.user.id) {
       return res.status(401).json({ message: 'User not authorized to update this listing' });
+    }
+
+    if (req.body.expiryDateTime) {
+      const expiryDate = new Date(req.body.expiryDateTime);
+      if (isNaN(expiryDate.getTime()) || expiryDate.getTime() <= Date.now()) {
+        return res.status(400).json({ success: false, message: 'Expiry date must be a valid future date and time.' });
+      }
     }
 
     const updatedListing = await Listing.findByIdAndUpdate(req.params.id, req.body, {
