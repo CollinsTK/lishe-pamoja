@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Shield, AlertTriangle, ArrowLeft } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import "@/components/ui/scrollbar-hide.css";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -54,7 +55,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 scrollbar-hide">
       {/* Background pattern */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-primary/5 to-transparent rounded-full blur-3xl" />

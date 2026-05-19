@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/PasswordInput";
 import logoUrl from "@/assets/lishe-logo.svg";
 import { apiClient } from "@/lib/apiClient";
+import "@/components/ui/scrollbar-hide.css";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -55,7 +56,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 scrollbar-hide">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
           <div className="mx-auto h-16 w-16 rounded-xl overflow-hidden border border-primary/30 bg-white">
