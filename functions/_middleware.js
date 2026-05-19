@@ -25,6 +25,17 @@ export async function onRequest(context) {
     }
   }
   
+  // If it's a static asset (CSS, JS, images, etc.), serve it directly
+  if (url.pathname.startsWith('/assets/') || 
+      url.pathname.startsWith('/favicon.') ||
+      url.pathname.endsWith('.css') ||
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.png') ||
+      url.pathname.endsWith('.jpg') ||
+      url.pathname.endsWith('.svg')) {
+    return context.next();
+  }
+  
   // For all other requests, serve the SPA
   return context.env.ASSETS.fetch(new Request('/index.html', context.request));
 }
