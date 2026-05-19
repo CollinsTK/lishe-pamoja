@@ -5,7 +5,8 @@ import { User } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, AlertTriangle, ArrowLeft, Lock } from "lucide-react";
+import { PasswordInput } from "@/components/PasswordInput";
+import { Shield, AlertTriangle, ArrowLeft } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 
 export default function AdminLoginPage() {
@@ -110,23 +111,14 @@ export default function AdminLoginPage() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm text-slate-300">
-                Password
-              </Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-primary pr-10"
-                  required
-                />
-                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              </div>
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              label="Password"
+              required
+              className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 focus:border-primary"
+            />
 
             {error && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">

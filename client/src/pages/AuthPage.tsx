@@ -5,6 +5,7 @@ import { User } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/PasswordInput";
 import logoUrl from "@/assets/lishe-logo.svg";
 import { apiClient } from "@/lib/apiClient";
 
@@ -88,10 +89,13 @@ export default function AuthPage() {
               <Label htmlFor="email" className="text-sm">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-sm">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
-            </div>
+            <PasswordInput
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              label="Password"
+              required
+            />
             {!isLogin && (
               <div className="space-y-1.5">
                 <Label htmlFor="phone" className="text-sm">Phone Number</Label>
