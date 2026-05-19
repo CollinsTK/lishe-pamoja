@@ -1,5 +1,0 @@
-# Cloudflare Pages build configuration
-# Serve static assets directly
-/assets/*  /assets/:splat  200
-# Redirect all other routes to index.html for SPA
-/*    /index.html   200
