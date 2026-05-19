@@ -1,0 +1,20 @@
+name = "lishe-pamoja"
+compatibility_date = "2024-01-01"
+
+[env.production]
+vars = { NODE_ENV = "production" }
+
+[env.preview]
+vars = { NODE_ENV = "development" }
+
+# Build configuration for Pages
+[build]
+command = "cd client && npm run build"
+cwd = ""
+watch_dir = "client/src"
+
+[env.production.build]
+command = "cd client && npm run build"
+
+[env.preview.build]
+command = "cd client && npm run build:dev"
