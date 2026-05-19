@@ -9,14 +9,12 @@ vars = { NODE_ENV = "production" }
 vars = { NODE_ENV = "development" }
 
 # Build configuration for Pages
+pages_build_output_dir = "client/dist"
+
 [build]
 command = "npm run build"
 cwd = "client"
 watch_dir = "client/src"
-
-# Pages configuration
-[pages]
-build_output_dir = "dist"
 
 [env.production.build]
 command = "npm run build"
