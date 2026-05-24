@@ -142,7 +142,7 @@ export default function CartPage() {
       toast.info("STK Push sent — enter your M-Pesa PIN on your phone.");
 
       let attempts = 0;
-      const maxAttempts = 30; // 2 minutes (30 × 4s)
+      const maxAttempts = 60; // 2 minutes (60 × 2s)
       const poll = setInterval(async () => {
         attempts++;
         try {
@@ -192,7 +192,7 @@ export default function CartPage() {
             setTimeout(() => navigate("/dashboard/orders"), 1000);
           }
         }
-      }, 4000);
+      }, 2000);
 
     } catch (err: any) {
       toast.error(err.message || "Checkout failed. Please try again.");

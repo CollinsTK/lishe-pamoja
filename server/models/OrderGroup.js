@@ -17,7 +17,7 @@ const orderGroupSchema = new mongoose.Schema({
   payment: {
     method: {
       type: String,
-      enum: ['mpesa', 'cash', 'card', 'none'],
+      enum: ['mpesa', 'cash', 'card', 'wallet', 'none'],
       default: 'none',
     },
     mpesaReceiptNumber: {

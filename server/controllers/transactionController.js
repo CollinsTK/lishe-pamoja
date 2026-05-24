@@ -232,19 +232,28 @@ const checkoutCart = async (req, res) => {
       await recipient.save();
 
       // Mark every transaction's payment as completed
-      for (const t of transactions) {
-        t.payment = { status: 'completed', method: 'wallet', paidAt: new Date() };
-        await t.save();
-      }
+      const paidAt = new Date();
+      await Transaction.updateMany(
+        { _id: { $in: transactions.map(t => t._id) } },
+        { $set: { 'payment.status': 'completed', 'payment.method': 'wallet', 'payment.paidAt': paidAt } }
+      );
+
       orderGroup.payment = { method: 'wallet', status: 'completed' };
       await orderGroup.save();
+
+      return res.status(201).json({
+        success: true,
+        message: 'Checkout successful.',
+        orderGroup,
+        walletBalance: recipient.walletBalance,
+      });
     }
 
+    // Free items (totalAmount === 0) — no payment needed
     res.status(201).json({
       success: true,
       message: 'Checkout successful.',
       orderGroup,
-      walletBalance: totalAmount > 0 ? (await User.findById(recipientId).select('walletBalance')).walletBalance : undefined,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
@@ -749,7 +758,35 @@ const checkOrderPaymentStatus = async (req, res) => {
     const record = await OrderGroup.findOne({ _id: id, recipientId });
     if (!record) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    const status = record.payment?.status || 'pending';
+    let status = record.payment?.status || 'pending';
+
+    // If still pending, actively query Safaricom to detect completion faster
+    if (status === 'pending' && record.payment?.checkoutRequestId) {
+      try {
+        const stkResult = await mpesaService.checkSTKStatus(record.payment.checkoutRequestId);
+        if (stkResult.resultCode === 0) {
+          // Payment confirmed — update record immediately
+          record.payment.status = 'completed';
+          record.payment.paidAt = new Date();
+          await record.save();
+          // Also advance all child transactions
+          if (record.transactions?.length) {
+            await Transaction.updateMany(
+              { _id: { $in: record.transactions }, status: 'PENDING_PAYMENT' },
+              { $set: { status: 'CLAIMED', 'payment.status': 'completed', 'payment.paidAt': new Date() } }
+            );
+          }
+          status = 'completed';
+        } else if (stkResult.resultCode === 1032 || stkResult.resultCode === 1037) {
+          // User cancelled or timed out
+          record.payment.status = 'failed';
+          await record.save();
+          status = 'failed';
+        }
+      } catch {
+        // Daraja query failed — keep existing status, callback will still fire
+      }
+    }
 
     return res.status(200).json({
       success: true,
