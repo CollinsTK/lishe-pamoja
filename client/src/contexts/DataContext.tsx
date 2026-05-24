@@ -90,9 +90,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch only listings
   const fetchListings = async () => {
     try {
-      const listingsRes = await apiClient.get('/listings').catch(() => []);
-      if (Array.isArray(listingsRes)) {
-        setListings(listingsRes.map(readListing));
+      const listingsRes = await apiClient.get('/listings').catch(() => ({ listings: [] }));
+      const raw = Array.isArray(listingsRes) ? listingsRes : (listingsRes?.listings ?? []);
+      if (Array.isArray(raw)) {
+        setListings(raw.map(readListing));
       }
     } catch (error) {
       console.error('Error fetching listings:', error);
