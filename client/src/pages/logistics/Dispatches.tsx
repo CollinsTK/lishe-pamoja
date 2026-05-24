@@ -393,12 +393,44 @@ export default function Dispatches() {
             </div>
           ) : (
             <div className="flex gap-2">
+              {isAssigned && listing?.location?.lat && listing?.location?.lng && (
+                <Button
+                  className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700 text-white h-10"
+                  onClick={() => {
+                    const url = `https://www.google.com/maps/dir/?api=1&destination=${listing.location.lat},${listing.location.lng}&travelmode=driving`;
+                    window.open(url, "_blank");
+                  }}
+                >
+                  <MapPin className="w-3.5 h-3.5" /> Go to Vendor
+                </Button>
+              )}
+              {isAssigned && (!listing?.location?.lat || !listing?.location?.lng) && (
+                <Button
+                  className="flex-1 gap-2 h-10"
+                  variant="outline"
+                  onClick={() => { if (tx.vendorId?.phone) window.open(`tel:${tx.vendorId.phone}`); }}
+                >
+                  <Phone className="w-3.5 h-3.5" /> Call Vendor
+                </Button>
+              )}
               {pickedUp && (
                 <Button
                   className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white h-10"
                   onClick={() => { setPinMode({ id: tx._id, type: "delivery" }); setPinInput(""); }}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Delivery
+                </Button>
+              )}
+              {pickedUp && tx.deliveryLocation?.lat && tx.deliveryLocation?.lng && (
+                <Button
+                  className="gap-2 bg-purple-600 hover:bg-purple-700 text-white h-10 px-3"
+                  title="Navigate to recipient"
+                  onClick={() => {
+                    const url = `https://www.google.com/maps/dir/?api=1&destination=${tx.deliveryLocation!.lat},${tx.deliveryLocation!.lng}&travelmode=driving`;
+                    window.open(url, "_blank");
+                  }}
+                >
+                  <MapPin className="w-3.5 h-3.5" />
                 </Button>
               )}
             </div>

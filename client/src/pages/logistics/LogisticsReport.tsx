@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,8 +6,8 @@ import {
   PieChart, Pie, Cell, Legend, AreaChart, Area,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
-import { useData } from "@/contexts/DataContext";
-import { Download, Printer, Truck, TrendingUp, CheckCircle, BarChart3 } from "lucide-react";
+import { apiClient } from "@/lib/apiClient";
+import { Download, Printer, Truck, TrendingUp, CheckCircle, BarChart3, RefreshCw } from "lucide-react";
 import Papa from "papaparse";
 
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -42,15 +42,25 @@ function StatRow({ label, value, highlight }: { label: string; value: any; highl
 
 export default function LogisticsReport() {
   const { user } = useAuth();
-  const { dispatches, orders } = useData();
   const [tab, setTab] = useState<Tab>("overview");
-  const riderId = user?.id ?? "";
+  const [myDispatches, setMyDispatches] = useState<any[]>([]);
+  const [loadingDispatches, setLoadingDispatches] = useState(true);
   const now = new Date();
 
-  // ── Filter dispatches for this rider ──
-  const myDispatches = dispatches.filter((d: any) =>
-    d.logisticsId === riderId || d.logisticsId?._id === riderId
-  );
+  useEffect(() => {
+    const load = async () => {
+      setLoadingDispatches(true);
+      try {
+        const data: any = await apiClient.get("/transactions/rider-dispatches");
+        setMyDispatches(Array.isArray(data) ? data : (data?.transactions ?? []));
+      } catch {
+        setMyDispatches([]);
+      } finally {
+        setLoadingDispatches(false);
+      }
+    };
+    load();
+  }, []);
 
   const completedDispatches = myDispatches.filter((d: any) =>
     d.status === "DELIVERED" || d.status === "Delivered"
@@ -151,10 +161,31 @@ export default function LogisticsReport() {
           <h1 className="font-heading font-bold text-2xl">Logistics Reports</h1>
           <p className="text-xs text-muted-foreground mt-0.5">Generated on {today} · {user?.name}</p>
         </div>
-        <Button onClick={() => window.print()} variant="outline" size="sm" className="gap-1.5">
-          <Printer className="w-3.5 h-3.5" /> Print
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={async () => {
+              setLoadingDispatches(true);
+              try {
+                const data: any = await apiClient.get("/transactions/rider-dispatches");
+                setMyDispatches(Array.isArray(data) ? data : (data?.transactions ?? []));
+              } catch { /* ignore */ } finally { setLoadingDispatches(false); }
+            }}
+            variant="outline" size="sm" className="gap-1.5" disabled={loadingDispatches}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingDispatches ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+          <Button onClick={() => window.print()} variant="outline" size="sm" className="gap-1.5">
+            <Printer className="w-3.5 h-3.5" /> Print
+          </Button>
+        </div>
       </div>
+      {loadingDispatches && (
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      )}
+      {!loadingDispatches && myDispatches.length === 0 && (
+        <div className="text-center py-10 text-muted-foreground text-sm">No dispatch data yet. Accept and complete deliveries to see your reports here.</div>
+      )}
 
       {/* Tab nav */}
       <div className="flex flex-wrap gap-1.5 no-print">
@@ -171,7 +202,7 @@ export default function LogisticsReport() {
         })}
       </div>
 
-      <div id="rider-report-area">
+      {!loadingDispatches && myDispatches.length > 0 && <div id="rider-report-area">
         {/* Print header */}
         <div className="hidden print:block mb-6 border-b pb-3">
           <h1 className="font-bold text-xl">Lishe Pamoja — Rider {TABS.find(t => t.id === tab)?.label} Report</h1>
@@ -406,7 +437,7 @@ export default function LogisticsReport() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
