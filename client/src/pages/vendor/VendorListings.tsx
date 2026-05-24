@@ -38,10 +38,15 @@ export default function VendorListings() {
       const params = new URLSearchParams({ page: page.toString() });
       if (status && status !== "all") params.append('status', status);
       
-      const response = await apiClient.get<ListingResponse>(`/listings/my?${params.toString()}`);
-      setListings(response.data.listings);
-      setTotalPages(response.data.pagination.pages);
-      setCurrentPage(response.data.pagination.current);
+      const response = await apiClient.get(`/listings/my?${params.toString()}`) as any;
+      const mapped = (response.listings || []).map((l: any) => ({
+        ...l,
+        id: l._id || l.id,
+        quantity: l.availableQuantity ?? l.quantity,
+      }));
+      setListings(mapped);
+      setTotalPages(response.pagination?.pages ?? 1);
+      setCurrentPage(response.pagination?.current ?? 1);
     } catch (error) {
       toast.error("Failed to fetch listings");
     } finally {
