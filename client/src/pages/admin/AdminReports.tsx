@@ -99,9 +99,26 @@ export default function AdminReports() {
   const activeSubscribers   = users.filter(u => u.subscription?.status === "active" && u.subscription?.plan);
   const totalWalletBalance  = users.reduce((s, u) => s + (u.walletBalance || 0), 0);
 
-  // Impact
-  const mealsSaved  = completedOrders.length * 2;
-  const co2Reduced  = Math.round(totalQty * 0.28);
+  // Impact — based on quantity of food actually rescued (claimed) per listing
+  // Unit → kg conversion factors (approximate)
+  const toKg: Record<string, number> = {
+    kg: 1, g: 0.001, litres: 1, ml: 0.001,
+    pieces: 0.15, bundles: 0.3, packets: 0.25, boxes: 2,
+    trays: 0.5, crates: 5, bags: 1.5, loaves: 0.5,
+    portions: 0.3, servings: 0.3, bottles: 0.5, cans: 0.4,
+  };
+  // For each listing, rescued qty = originalQuantity - availableQuantity (what has been claimed)
+  // CO2 factor: 2.5 kg CO2e per kg food waste avoided (WRAP UK standard)
+  // Meals factor: 1 kg ≈ 3.3 meals (UN FAO estimate ~300g per meal)
+  const rescuedKg = listings.reduce((sum, l: any) => {
+    const original  = l.originalQuantity ?? l.quantity ?? 0;
+    const available = l.availableQuantity ?? l.quantity ?? 0;
+    const rescued   = Math.max(0, original - available);
+    const factor    = toKg[(l.unit ?? "").toLowerCase()] ?? 0.3;
+    return sum + rescued * factor;
+  }, 0);
+  const co2Reduced  = Math.round(rescuedKg * 2.5);
+  const mealsSaved  = Math.round(rescuedKg * 3.3);
 
   // ── Monthly buckets (last 6 months) ──────────────────────────────────────
   const buildMonthlyBuckets = <T extends Record<string, number>>(init: T) => {
@@ -191,8 +208,9 @@ export default function AdminReports() {
     { Metric: "Cancelled Orders",         Value: cancelledOrders.length },
     { Metric: "Total Revenue (KES)",      Value: totalRevenue },
     { Metric: "Total Delivery Fees (KES)",Value: totalDeliveryFees },
+    { Metric: "Food Rescued (kg est.)",   Value: Math.round(rescuedKg) },
     { Metric: "Meals Rescued",            Value: mealsSaved },
-    { Metric: "CO2 Reduced (kg)",         Value: co2Reduced },
+    { Metric: "CO2 Saved (kg)",           Value: co2Reduced },
     { Metric: "Total Dispatches",         Value: dispatches.length },
     { Metric: "Completed Deliveries",     Value: completedDispatches.length },
     { Metric: "Delivery Fulfilment Rate", Value: pct(completedDispatches.length, dispatches.length) },
@@ -314,13 +332,13 @@ export default function AdminReports() {
                 { label: "Total Listings",     value: listings.length,            color: "text-green-700",  bg: "bg-green-50 dark:bg-green-950/30" },
                 { label: "Total Orders",       value: orders.length,              color: "text-purple-700", bg: "bg-purple-50 dark:bg-purple-950/30" },
                 { label: "Platform Revenue",   value: fmt(totalRevenue),          color: "text-emerald-700",bg: "bg-emerald-50 dark:bg-emerald-950/30" },
-                { label: "Meals Rescued",      value: mealsSaved,                 color: "text-orange-700", bg: "bg-orange-50 dark:bg-orange-950/30" },
-                { label: "CO₂ Reduced (kg)",  value: co2Reduced,                 color: "text-teal-700",   bg: "bg-teal-50 dark:bg-teal-950/30" },
+                { label: "Meals Rescued",      value: mealsSaved.toLocaleString(),  color: "text-orange-700", bg: "bg-orange-50 dark:bg-orange-950/30" },
+                { label: "CO₂ Saved (kg)",    value: co2Reduced.toLocaleString(),  color: "text-teal-700",   bg: "bg-teal-50 dark:bg-teal-950/30" },
                 { label: "Completed Orders",   value: completedOrders.length,     color: "text-green-700",  bg: "bg-green-50 dark:bg-green-950/30" },
                 { label: "Active Deliveries",  value: activeDispatches.length,    color: "text-amber-700",  bg: "bg-amber-50 dark:bg-amber-950/30" },
               ].map(k => (
                 <Card key={k.label} className={`p-4 ${k.bg}`}>
-                  <p className={`font-heading font-bold text-2xl ${k.color}`}>{k.value.toLocaleString()}</p>
+                  <p className={`font-heading font-bold text-2xl ${k.color}`}>{typeof k.value === "number" ? k.value.toLocaleString() : k.value}</p>
                   <p className="text-xs text-muted-foreground mt-1">{k.label}</p>
                 </Card>
               ))}
@@ -407,8 +425,9 @@ export default function AdminReports() {
               </Card>
               <Card className="p-4">
                 <SectionTitle>Impact Metrics</SectionTitle>
-                <StatRow label="Meals Rescued" value={mealsSaved} />
-                <StatRow label="CO₂ Reduced (kg)" value={co2Reduced} />
+                <StatRow label="Food Rescued (kg est.)" value={Math.round(rescuedKg).toLocaleString()} />
+                <StatRow label="Meals Rescued" value={mealsSaved.toLocaleString()} />
+                <StatRow label="CO₂ Saved (kg)" value={co2Reduced.toLocaleString()} highlight />
                 <StatRow label="Free Listings" value={freeListings.length} />
                 <StatRow label="Paid Listings" value={paidListings.length} />
                 <StatRow label="Delivery-Enabled" value={deliveryListings.length} />
