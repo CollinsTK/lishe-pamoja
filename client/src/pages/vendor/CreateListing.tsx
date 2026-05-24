@@ -78,7 +78,7 @@ export default function CreateListing() {
     setTitle(listing.title);
     setDescription(listing.description);
     setCategory(listing.category);
-    setQuantity(listing.quantity);
+    setQuantity((listing as any).originalQuantity ?? listing.quantity);
     setUnit(listing.unit);
     setPrice(listing.price ?? 0);
     setIsFree(listing.isFree ?? false);
@@ -112,6 +112,8 @@ export default function CreateListing() {
       title: title.trim(),
       description: description.trim(),
       quantity: Number(quantity),
+      originalQuantity: Number(quantity),
+      availableQuantity: Number(quantity),
       unit: unit.trim(),
       price: isFree ? 0 : Number(price),
       isFree,

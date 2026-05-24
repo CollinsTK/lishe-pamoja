@@ -41,7 +41,7 @@ export default function VendorListings() {
       const response = await apiClient.get(`/listings/my?${params.toString()}`) as any;
       const mapped = (response.listings || []).map((l: any) => ({
         ...l,
-        id: l._id || l.id,
+        id: (l._id || l.id)?.toString(),
         quantity: l.availableQuantity ?? l.quantity,
       }));
       setListings(mapped);
@@ -66,14 +66,15 @@ export default function VendorListings() {
     setDeletingId(listingId);
     try {
       await apiClient.delete(`/listings/${listingId}`);
-      setListings(prev => prev.filter(l => l.id !== listingId));
+      setListings(prev => prev.filter(l => l.id?.toString() !== listingId?.toString()));
       removeListingFromCart(listingId);
       toast.success("Listing deleted successfully");
     } catch (error: any) {
-      if (error.response?.data?.message?.includes("active transactions")) {
-        toast.error("Cannot delete listing with active transactions. Please complete or cancel all transactions first.");
+      const msg: string = error?.message || "Failed to delete listing";
+      if (msg.toLowerCase().includes("active transaction")) {
+        toast.error("Cannot delete: listing has active transactions. Complete or cancel them first.");
       } else {
-        toast.error(error.response?.data?.message || "Failed to delete listing");
+        toast.error(msg);
       }
     } finally {
       setDeletingId(null);
@@ -222,7 +223,7 @@ export default function VendorListings() {
                   </button>
                   <button 
                     className="p-2 rounded-lg hover:bg-muted transition-colors" 
-                    onClick={() => navigate(`/listings/${listing.id}`)} 
+                    onClick={() => navigate(`/dashboard/listings/${listing.id}`)} 
                     title="View listing"
                   >
                     <Eye className="w-4 h-4 text-muted-foreground" />

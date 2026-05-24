@@ -281,9 +281,10 @@ const updateListing = async (req, res) => {
 
     // Update listing status based on available quantity
     if (updates.availableQuantity !== undefined) {
+      const newOriginal = updates.originalQuantity ?? listing.originalQuantity;
       if (updates.availableQuantity <= 0) {
         updates.status = 'fully_claimed';
-      } else if (updates.availableQuantity < updates.originalQuantity) {
+      } else if (updates.availableQuantity < newOriginal) {
         updates.status = 'partially_claimed';
       } else {
         updates.status = 'available';
